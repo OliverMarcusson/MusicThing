@@ -150,6 +150,9 @@ export function usePlayer() {
       const before = state
       const beforeProgress = before ? progressAt(before, syncedAt) : 0
       lastCommand.current = Date.now()
+      // Starting something leaves a finished playlist behind, even if the first poll is too soon to
+      // see it playing.
+      ended.current = null
       try {
         await api(path, {
           method,

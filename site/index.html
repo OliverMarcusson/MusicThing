@@ -135,6 +135,9 @@
       display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
     }
 
+    .made { display: inline-flex; align-items: center; gap: 8px; }
+    .made svg { width: 18px; height: 11.25px; border-radius: 1px; }
+
     @media (max-width: 760px) {
       .hero { --s: 58vw; }
       .bar { grid-template-columns: 1fr; justify-items: center; text-align: center; }
@@ -197,7 +200,11 @@
   </main>
 
   <footer>
-    <span>Made by Oliver Marcusson in Sweden.</span>
+    <span class="made">
+      <!-- Swedish flag in the footer's own colour: the field faint, the cross solid (5:2:9 by 4:2:4). -->
+      <svg viewBox="0 0 16 10" aria-hidden="true"><rect width="16" height="10" fill="currentColor" opacity="0.35"/><path d="M5 0h2v10H5zM0 4h16v2H0z" fill="currentColor"/></svg>
+      Made in Sweden
+    </span>
     <span>Not affiliated with Spotify.</span>
   </footer>
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { Heart, Search as SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
 import { Search } from '@/components/Search'
 import { Sidebar } from '@/components/Sidebar'
@@ -272,7 +273,11 @@ function NowView({
             stroke="currentColor"
             strokeLinecap="round"
             aria-label="MusicThing"
-            className="size-40 text-foreground/80"
+            // Red in the dev app, so it is never mistaken for the installed one.
+            className={cn(
+              'size-40',
+              import.meta.env.DEV ? 'text-red-400/80' : 'text-foreground/80'
+            )}
           >
             <path d="M38 78Q122 40 218 94" strokeWidth="26" />
             <path d="M52 128Q120 98 198 142" strokeWidth="23" />

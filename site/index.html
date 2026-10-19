@@ -7,7 +7,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MusicThing: a quiet window for Spotify</title>
-  <meta name="description" content="A small Windows player for your Spotify library: your playlists, the queue as Cover Flow, and the controls.">
+  <meta name="description" content="A small Windows player for Spotify Premium: your playlists, the queue as Cover Flow, drag to reorder what plays next.">
   <meta name="color-scheme" content="dark light">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='none' stroke='%239a9aa0' stroke-linecap='round'%3E%3Cpath d='M38 78Q122 40 218 94' stroke-width='26'/%3E%3Cpath d='M52 128Q120 98 198 142' stroke-width='23'/%3E%3Cpath d='M66 176Q118 154 178 188' stroke-width='20'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -193,9 +193,9 @@
     </section>
 
     <section class="notes">
-      <div><h2>What you need</h2><p>The Spotify app for Windows and a Premium account. MusicThing signs in to Spotify once and remembers you.</p></div>
+      <div><h2>What you need</h2><p>A Spotify Premium account, nothing else. MusicThing plays the music itself, so the Spotify app doesn't need to be installed. The first time, it asks you to sign in to Spotify in your browser twice: once for your library, once for playback. Reordering the queue asks once more.</p></div>
       <div><h2>Installing</h2><p>The installer isn't signed yet, so Windows may stop it. Choose More info, then Run anyway.</p></div>
-      <div><h2>Updates</h2><p>New versions download in the background and install the next time you quit.</p></div>
+      <div><h2>Updates</h2><p>New versions download in the background. A button in the corner restarts into one when it's ready, or it installs the next time you quit. Ctrl+U checks right away.</p></div>
     </section>
   </main>
 
@@ -232,11 +232,11 @@
       ['#7b61ff', 'radial-gradient(circle at 28% 34%, #f4f1ff 0 11%, transparent 12%), conic-gradient(from 200deg at 62% 40%, #24177a, #7b61ff, #24177a)',
         'Ctrl+K for anything', 'Search Spotify and your library from anywhere, then play it or queue it.'],
       ['#f4a259', 'linear-gradient(#f4a259 0 54%, #3b2a1e 54%)',
-        'Spotify does the playing', 'Sound quality, downloads and your devices work exactly as before.'],
+        'Plays it itself', 'Its own player at 320 kbps, so the Spotify app can stay closed.'],
       ['#4cc9f0', 'radial-gradient(circle at 50% 118%, #4cc9f0 0 44%, #0b2545 45%)',
-        'Lives in the tray', 'Close the window and keep listening. Media keys still work.'],
+        'Lives in the tray', 'Close the window and the music keeps playing.'],
       ['#e85d9c', 'linear-gradient(90deg, #e85d9c 0 33%, #ffb3d1 33% 66%, #6d1b44 66%)',
-        'Keeps itself current', 'New versions install the next time you quit.']
+        'Keeps itself current', 'Updates download on their own. One click restarts into the new version.']
     ]
     const N = ALBUMS.length
     const STEP_MS = 4500

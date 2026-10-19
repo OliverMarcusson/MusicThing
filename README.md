@@ -24,4 +24,15 @@ MusicThing is the window you use. Requires Spotify Premium.
 bun run dev        # electron-vite dev --watch
 bun run typecheck  # node + web
 bun run build:win  # installer
+bun run release    # build and upload to the update feed
 ```
+
+## Releasing
+
+Installed copies check `https://docs.marcusson.dev/musicthing/latest.yml` at start-up and every
+6 hours, download newer builds in the background, and install them on quit (or via the tray's
+"Restart to update"). To ship one:
+
+1. Bump `version` in `package.json`.
+2. `bun run release` (needs SSH to the homelab as root; uploads to
+   `/srv/compose/edge/sites/musicthing/`, served by the edge Caddy).

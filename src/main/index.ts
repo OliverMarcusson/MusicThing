@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, Tray } from 'ele
 import { join } from 'path'
 import { hostname } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import iconDark from '../../resources/icon-dark.png?asset'
 import iconLight from '../../resources/icon-light.png?asset'
 import { getToken, login, logout } from './auth'
@@ -11,6 +12,9 @@ import { login as webLogin, playlistPage } from './webplayer'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+// Set once an update has downloaded; it installs on the next quit, or now via the tray.
+let updateReady = false
+const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000
 
 // Off-white lines on a dark taskbar, grey on a light one.
 const icon = (): string => (nativeTheme.shouldUseDarkColors ? iconDark : iconLight)
@@ -78,6 +82,9 @@ function createTray(): void {
           ? { label: 'Show Spotify app', click: () => showSpotify() }
           : { label: 'Hide Spotify app', click: () => hideSpotify() },
         { type: 'separator' },
+        ...(updateReady
+          ? [{ label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }]
+          : []),
         { label: 'Quit', click: () => app.quit() }
       ])
     )
@@ -103,9 +110,21 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+  checkForUpdates()
   hideSpotify()
   watchSpotify()
 })
+
+// Installed builds poll the homelab feed (electron-builder.yml `publish`) and download in the
+// background; a dev run has no feed to compare against.
+function checkForUpdates(): void {
+  if (!app.isPackaged) return
+  autoUpdater.on('update-downloaded', () => (updateReady = true))
+  // Offline or feed down: try again next round.
+  const check = (): void => void autoUpdater.checkForUpdates().catch(() => {})
+  check()
+  setInterval(check, UPDATE_CHECK_MS)
+}
 
 // Give the Spotify window back (minimized) so it isn't stranded invisible after we exit.
 app.on('before-quit', (e) => {

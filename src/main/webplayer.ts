@@ -49,6 +49,8 @@ const USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const ses = (): Electron.Session => {
   const s = session.fromPartition(PARTITION)
   s.setUserAgent(USER_AGENT)
+  // The web player hands spotify: links to the desktop app, which Electron would launch.
+  s.setPermissionRequestHandler((_, permission, cb) => cb(permission !== 'openExternal'))
   return s
 }
 

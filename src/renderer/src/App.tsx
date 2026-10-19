@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { Heart } from 'lucide-react'
+import { Heart, Search as SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
 import { Search } from '@/components/Search'
@@ -133,7 +133,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15, ease: 'easeOut' }}
                 >
-                  {view.kind === 'now' && <NowView player={player} />}
+                  {view.kind === 'now' && (
+                    <NowView player={player} onSearch={() => setSearchOpen(true)} />
+                  )}
                   {view.kind === 'liked' && (
                     <TrackList<{ track: Track | null }>
                       key="liked"
@@ -218,7 +220,13 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
   )
 }
 
-function NowView({ player }: { player: Player }): React.JSX.Element {
+function NowView({
+  player,
+  onSearch
+}: {
+  player: Player
+  onSearch: () => void
+}): React.JSX.Element {
   const track = player.state?.item
   return (
     // Reaches back under the sidebar rail (72px, see Sidebar) so the page centres on the window,
@@ -256,9 +264,25 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
           </div>
         </>
       ) : (
-        <p className="max-w-xs text-center text-sm text-muted-foreground">
-          Nothing playing. Pick something from your library, or press Ctrl K to search.
-        </p>
+        // Nothing playing: the mark, and the way in. The button opens search, same as Ctrl K.
+        <div className="flex flex-col items-center gap-8">
+          <svg
+            viewBox="0 0 256 256"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            aria-label="MusicThing"
+            className="size-24 text-foreground/80"
+          >
+            <path d="M38 78Q122 40 218 94" strokeWidth="26" />
+            <path d="M52 128Q120 98 198 142" strokeWidth="23" />
+            <path d="M66 176Q118 154 178 188" strokeWidth="20" />
+          </svg>
+          <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={onSearch}>
+            <SearchIcon />
+            <kbd className="font-sans text-sm">Ctrl K</kbd>
+          </Button>
+        </div>
       )}
     </div>
   )

@@ -113,7 +113,8 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
   return (
     // Honour the OS reduced-motion setting for every animation below.
     <MotionConfig reducedMotion="user">
-      <div className="flex h-screen flex-col">
+      {/* Clips the hidden bar, which slides below the window rather than collapsing. */}
+      <div className="flex h-screen flex-col overflow-hidden">
         <div className="relative flex min-h-0 flex-1">
           <UpdateButton />
           {/* The rail runs to the top edge; only the content column carries the title bar. */}

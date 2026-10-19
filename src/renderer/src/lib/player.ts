@@ -32,6 +32,8 @@ export function usePlayer() {
   })
   // The track a finished playlist stopped on; hidden until playback starts again.
   const ended = useRef<string | null>(null)
+  // A track change that may be that stop, until its pause shows up or the window passes.
+  const stopping = useRef<{ id: string | null; until: number } | null>(null)
 
   // Tracks played this session, derived during render so Cover Flow moves the old centre cover
   // left in the same frame the new one arrives (an effect would leave a one-frame gap).
@@ -61,9 +63,9 @@ export function usePlayer() {
   }, [])
 
   // A playlist that runs out without repeat stops on its first track, paused at 0:00, which
-  // Spotify reports just like a paused track. Catch the moment it happens (playing one track,
-  // then paused at the start of another, after reaching its end or pressing next) and show
-  // nothing playing until it plays again.
+  // Spotify reports just like a paused track. Catch it in two parts: a playing track gives way to
+  // another (at its end, or on "next"), and soon after, that one shows paused at the start. Spotify
+  // can report the new track as still playing for a moment, so the pause may come a poll later.
   // ponytail: "next" on the last track while paused can't be told from an ordinary skip.
   const show = useCallback((next: PlaybackState | null, startedAt: number) => {
     const prev = shown.current
@@ -74,14 +76,23 @@ export function usePlayer() {
       prev.state?.is_playing &&
       prev.state.repeat_state === 'off' &&
       item &&
-      !next.is_playing &&
-      (next.progress_ms ?? 0) < 1000 &&
       item.id !== prev.state.item?.id &&
       (skipped ||
         progressAt(prev.state, prev.syncedAt, startedAt) >=
           (prev.state.item?.duration_ms ?? Infinity) - END_MARGIN_MS)
     )
-      ended.current = item.id
+      stopping.current = { id: item.id, until: startedAt + BACK_WINDOW_MS }
+    const s = stopping.current
+    if (
+      s &&
+      startedAt < s.until &&
+      item?.id === s.id &&
+      !next?.is_playing &&
+      (next?.progress_ms ?? 0) < 1000
+    ) {
+      ended.current = s.id
+      stopping.current = null
+    }
     if (ended.current && (next?.is_playing || item?.id !== ended.current)) ended.current = null
     setState(ended.current ? null : next)
   }, [])

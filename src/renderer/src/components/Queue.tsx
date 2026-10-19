@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, Reorder } from 'motion/react'
 import { GripVertical, ListMusic, ListStart, Music, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Player } from '@/lib/player'
 import { api, imageUrl, type Track } from '@/lib/spotify'
 
@@ -60,6 +61,15 @@ function useBothQueues(player: Player, enabled: boolean, attempt: number): Loade
 
 type Row = { track: Track; ref?: QueueRef; key: string }
 
+// Title and artist widths for the placeholder rows, varied so they read as a list of songs.
+const SKELETON_WIDTHS = [
+  ['55%', '35%'],
+  ['70%', '25%'],
+  ['45%', '40%'],
+  ['62%', '30%'],
+  ['50%', '22%']
+]
+
 // Pairs each Web API track with its Connect entry, walking both lists in order. Tracks that don't
 // line up (relinked or just changed) get no entry and stay read-only. Keys follow the uid, so a
 // moved row keeps its key and slides instead of remounting; with repeat on, Spotify lists the
@@ -94,9 +104,11 @@ export function Queue({ player }: { player: Player }): React.JSX.Element {
   const toggle = useRef<HTMLButtonElement>(null)
 
   const aligned = useMemo(() => align(loaded?.tracks ?? [], loaded?.items ?? null), [loaded])
-  // A drag's order is shown until the refetched queue (a new `aligned`) replaces it.
-  const [dragged, setDragged] = useState<{ base: Row[]; rows: Row[] } | null>(null)
-  const rows = dragged?.base === aligned ? dragged.rows : aligned
+  // The order a drag or button asked for shows at once, until the refetched queue (a new
+  // `aligned`) replaces it; Spotify takes a second or two to report it.
+  const [pending, setPending] = useState<{ base: Row[]; rows: Row[] } | null>(null)
+  const rows = pending?.base === aligned ? pending.rows : aligned
+  const expect = (next: Row[]): void => setPending({ base: aligned, rows: next })
   const latest = useRef(rows)
   useLayoutEffect(() => {
     latest.current = rows
@@ -173,24 +185,48 @@ export function Queue({ player }: { player: Player }): React.JSX.Element {
                 className="max-h-[min(20rem,40vh)] overflow-y-auto px-1 pb-2"
               >
                 {tracks === null ? (
-                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">Loading…</p>
+                  <div aria-label="Loading the queue" role="status">
+                    {SKELETON_WIDTHS.map(([title, artist], i) => (
+                      <div key={i} className="flex items-center gap-2 py-2 pr-3 pl-1">
+                        <span className="size-4 shrink-0" />
+                        <Skeleton className="ml-1 size-9 shrink-0 rounded-sm" />
+                        <span className="flex flex-1 flex-col gap-1.5">
+                          <Skeleton className="h-3.5" style={{ width: title }} />
+                          <Skeleton className="h-3 opacity-60" style={{ width: artist }} />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 ) : rows.length === 0 ? (
                   <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                     Nothing queued.
                   </p>
                 ) : (
+                  // Rows settle in one after another when the queue arrives; rows added later
+                  // (a refetch) come in the same way, and moved rows keep their key, so stay put.
                   <Reorder.Group
                     axis="y"
                     values={rows}
-                    onReorder={(next) => setDragged({ base: aligned, rows: next })}
+                    onReorder={expect}
+                    initial="hidden"
+                    animate="shown"
+                    variants={{ shown: { transition: { staggerChildren: 0.03 } } }}
                   >
                     {rows.map((row) => (
                       <QueueRow
                         key={row.key}
                         row={row}
                         onDrop={() => dropped(row)}
-                        onPlayNext={() => row.ref && run(window.api.connectMove(row.ref, null))}
-                        onSkipTo={() => row.ref && run(window.api.connectSkipTo(row.ref.uid))}
+                        onPlayNext={() => {
+                          if (!row.ref) return
+                          expect([row, ...rows.filter((r) => r !== row)])
+                          run(window.api.connectMove(row.ref, null))
+                        }}
+                        onSkipTo={() => {
+                          if (!row.ref) return
+                          expect(rows.slice(rows.indexOf(row) + 1))
+                          run(window.api.connectSkipTo(row.ref.uid))
+                        }}
                       />
                     ))}
                   </Reorder.Group>
@@ -245,6 +281,10 @@ function QueueRow({
       value={row}
       drag={uid ? 'y' : false}
       onDragEnd={onDrop}
+      variants={{
+        hidden: { opacity: 0, y: 6 },
+        shown: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } }
+      }}
       // Lifted while dragging, so it reads as picked up and passes over its neighbours.
       whileDrag={{ scale: 1.02, boxShadow: '0 12px 30px -10px rgb(0 0 0 / 0.6)', zIndex: 1 }}
       className={

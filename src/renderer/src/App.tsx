@@ -248,10 +248,11 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
           {/* The player bar itself, minus the track the page already titles: same height, columns
               and edge insets (the negative margin undoes the page padding), so nothing moves when
               the bar slides away and these take over. */}
-          <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 self-stretch px-4 pb-4">
+          <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 self-stretch px-6 pb-4">
             <span />
             <Transport player={player} />
-            <Extras player={player} />
+            {/* Level with the seek bar: the same 16px row at the bottom of the controls block. */}
+            <Extras player={player} className="h-4 self-end" />
           </div>
         </>
       ) : (

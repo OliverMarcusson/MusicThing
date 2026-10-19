@@ -12,7 +12,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
-    "librespot": "cargo install librespot --version 0.8.0 --locked --root resources/librespot",
+    "librespot": "node scripts/librespot.mjs",
     "dev": "npm run librespot && electron-vite dev --watch",
     "build": "npm run typecheck && npm run librespot && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps",

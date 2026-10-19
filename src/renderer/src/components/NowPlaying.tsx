@@ -32,7 +32,7 @@ export function NowPlaying({
   const thumb = track?.album?.images.at(-1)?.url
 
   return (
-    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 border-t px-4">
+    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 border-t px-6">
       <button
         type="button"
         onClick={onOpen}
@@ -200,9 +200,9 @@ export function Extras({
   return (
     <div
       className={
-        // Level with the seek bar: the same 16px row at the bottom of the controls block.
+        // Centred in the bar; Now playing levels it with the seek bar instead (see App).
         cn(
-          'flex h-4 min-w-0 items-center justify-end gap-2 self-end text-muted-foreground',
+          'flex min-w-0 items-center justify-end gap-2 self-center text-muted-foreground',
           className
         )
       }

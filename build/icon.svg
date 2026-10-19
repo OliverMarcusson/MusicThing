@@ -1,0 +1,8 @@
+<!-- MusicThing mark: three flat arcs after Spotify's, tilted down to the right and shortening
+     mostly at the right end. Colour comes from the use site: #e6e6e9 on dark, #6c6c72 on light,
+     #9a9aa0 for the static .exe/installer icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round">
+  <path d="M38 78Q122 40 218 94" stroke-width="26"/>
+  <path d="M52 128Q120 98 198 142" stroke-width="23"/>
+  <path d="M66 176Q118 154 178 188" stroke-width="20"/>
+</svg>

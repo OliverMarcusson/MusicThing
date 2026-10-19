@@ -1,8 +1,9 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, Tray } from 'electron'
 import { join } from 'path'
 import { hostname } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import iconDark from '../../resources/icon-dark.png?asset'
+import iconLight from '../../resources/icon-light.png?asset'
 import { getToken, login, logout } from './auth'
 import { hideSpotify, showSpotify, spotifyHidden, watchSpotify } from './spotify-window'
 import { login as webLogin, playlistPage } from './webplayer'
@@ -10,6 +11,9 @@ import { login as webLogin, playlistPage } from './webplayer'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+
+// Off-white lines on a dark taskbar, grey on a light one.
+const icon = (): string => (nativeTheme.shouldUseDarkColors ? iconDark : iconLight)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -22,7 +26,7 @@ function createWindow(): void {
     // Hide the native title bar but keep Windows' caption buttons, recoloured to match the app.
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#0b0c0e', symbolColor: '#a3a4a8', height: 36 },
-    icon,
+    icon: icon(),
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -58,7 +62,11 @@ function showWindow(): void {
 }
 
 function createTray(): void {
-  tray = new Tray(icon)
+  tray = new Tray(icon())
+  nativeTheme.on('updated', () => {
+    tray?.setImage(icon())
+    mainWindow?.setIcon(icon())
+  })
   tray.setToolTip('MusicThing')
   tray.on('click', showWindow)
   // Rebuilt on open so the Spotify toggle label stays current.

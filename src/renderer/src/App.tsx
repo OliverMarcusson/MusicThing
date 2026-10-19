@@ -272,7 +272,7 @@ function NowView({
             stroke="currentColor"
             strokeLinecap="round"
             aria-label="MusicThing"
-            className="size-24 text-foreground/80"
+            className="size-40 text-foreground/80"
           >
             <path d="M38 78Q122 40 218 94" strokeWidth="26" />
             <path d="M52 128Q120 98 198 142" strokeWidth="23" />

@@ -196,7 +196,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
             and back up when you leave. Height and offset move together, so the page grows
             into the space instead of jumping. */}
         <motion.div
-          className="shrink-0 overflow-hidden"
+          className="shrink-0"
           initial={false}
           animate={{ height: barHidden ? 0 : 'auto' }}
           transition={{ type: 'spring', duration: 0.4, bounce: 0 }}

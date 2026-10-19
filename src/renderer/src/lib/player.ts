@@ -227,8 +227,10 @@ export function usePlayer() {
     queueVersion,
     /** After the queue or track changed outside the Web API (Connect commands). */
     refreshQueue: () => {
-      setQueueVersion((v) => v + 1)
       sync()
+      // The Web API's queue trails Connect by up to ~750ms (measured); fetching sooner returns the
+      // old order, which snaps a dropped row back before it lands.
+      setTimeout(() => setQueueVersion((v) => v + 1), 1000)
     },
     addToQueue: async (uri: string) => {
       const id = await device()

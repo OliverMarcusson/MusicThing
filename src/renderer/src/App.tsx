@@ -221,7 +221,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
 function NowView({ player }: { player: Player }): React.JSX.Element {
   const track = player.state?.item
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden px-10">
+    // Reaches back under the sidebar rail (72px, see Sidebar) so the page centres on the window,
+    // like the player bar it replaces, rather than on the space beside the rail.
+    <div className="-ml-[72px] flex h-full w-[calc(100%+72px)] flex-col items-center justify-center gap-2 overflow-hidden px-10">
       {track ? (
         <>
           <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2">

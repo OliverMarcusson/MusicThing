@@ -52,7 +52,6 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build:${{ matrix.platform }} --publish never
         env:
-          MAIN_VITE_SPOTIFY_CLIENT_ID: ${{ secrets.MAIN_VITE_SPOTIFY_CLIENT_ID }}
           # ponytail: unsigned builds; add signing certs here when Gatekeeper/SmartScreen warnings matter.
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - if: github.ref_type != 'tag'

@@ -6,13 +6,12 @@ export type UpdateStatus = 'none' | 'downloading' | 'ready'
 
 const api = {
   token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
-  login: (): Promise<string> => ipcRenderer.invoke('auth:login'),
-  logout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
   /** Playlist pages via the web player, for playlists the Web API refuses. */
   webPlaylist: (id: string, offset: number): Promise<WebPage> =>
     ipcRenderer.invoke('web:playlist', id, offset),
+  /** The app's one Spotify sign-in; resolves false if the window was closed. */
   webLogin: (): Promise<boolean> => ipcRenderer.invoke('web:login'),
-  /** Queue editing over Spotify Connect; needs the web player signed in. */
+  /** Queue editing over Spotify Connect; needs the user signed in. */
   connectQueue: (): Promise<ConnectResult<(QueueRef & { uri: string })[]>> =>
     ipcRenderer.invoke('connect:queue'),
   connectMove: (from: QueueRef, after: QueueRef | null): Promise<ConnectResult<true>> =>

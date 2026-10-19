@@ -341,9 +341,6 @@ export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
     }
   }
 
-  // Sessions from before playlist editing existed lack the scope; Spotify answers 403.
-  const needsScope = error instanceof ApiError && error.status === 403
-
   return (
     <Popover
       open={open}
@@ -377,22 +374,7 @@ export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
           <CommandInput placeholder="Add to playlist" />
           <CommandList className="max-h-72">
             {error ? (
-              <div className="space-y-3 p-3 text-sm">
-                <p className="text-destructive">
-                  {needsScope ? 'Sign in again to let MusicThing edit playlists.' : error.message}
-                </p>
-                {needsScope && (
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      await window.api.logout()
-                      location.reload()
-                    }}
-                  >
-                    Sign in again
-                  </Button>
-                )}
-              </div>
+              <p className="p-3 text-sm text-destructive">{error.message}</p>
             ) : playlists ? (
               <>
                 <CommandEmpty>No playlists.</CommandEmpty>

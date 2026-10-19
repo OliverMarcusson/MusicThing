@@ -97,7 +97,11 @@ export function usePlayer() {
     setState(ended.current ? null : next)
   }, [])
 
+  // One poll at a time, so polls don't stack up while api() waits out a rate limit.
+  const polling = useRef(false)
   const sync = useCallback(async () => {
+    if (polling.current) return
+    polling.current = true
     const startedAt = Date.now()
     try {
       const next = await api<PlaybackState>('/me/player')
@@ -109,6 +113,8 @@ export function usePlayer() {
     } catch (err) {
       // Transient poll failures (429/5xx) are retried by the next poll; only surface auth loss.
       if (err instanceof Unauthorized) setError(err)
+    } finally {
+      polling.current = false
     }
   }, [show])
 

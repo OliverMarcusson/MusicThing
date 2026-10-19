@@ -41,8 +41,7 @@ function Login({ onDone }: { onDone: () => void }): React.JSX.Element {
     setPending(true)
     setError(null)
     try {
-      await window.api.login()
-      onDone()
+      if (await window.api.webLogin()) onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -57,7 +56,7 @@ function Login({ onDone }: { onDone: () => void }): React.JSX.Element {
           Controls playback on your Spotify devices. Requires Premium.
         </p>
         <Button onClick={login} disabled={pending} className="w-full">
-          {pending ? 'Waiting for browser…' : 'Log in with Spotify'}
+          {pending ? 'Signing in…' : 'Log in with Spotify'}
         </Button>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>

@@ -10,6 +10,9 @@ import { BrowserWindow, session } from 'electron'
  * secrets or hashes that Spotify rotates. Anonymous by default (public playlists); after
  * `login()` the session is the user's, so private playlists they can see work too.
  *
+ * That sign-in is the app's only Spotify login: its token also drives the Web API (`getToken`)
+ * and signs librespot in once (librespot.ts).
+ *
  * Against Spotify's developer terms, and can break whenever the web player changes.
  */
 
@@ -28,7 +31,10 @@ let capturing: Promise<Captured> | null = null
 let hookCallback: ((c: Captured) => void) | null = null
 // Token headers from the web player's latest call to Spotify's own APIs, for connect.ts.
 const AUTH_HEADERS = ['authorization', 'client-token', 'spotify-app-version', 'app-platform']
+// The web player's tokens last an hour; fetch new ones a little before that.
+const AUTH_MAX_AGE_MS = 50 * 60_000
 let auth: Record<string, string> | null = null
+let authAt = 0
 let authWaiter: (() => void) | null = null
 
 export type WebTrack = {
@@ -80,6 +86,7 @@ function hook(): void {
     )
     if (lower.authorization && lower['client-token']) {
       auth = Object.fromEntries(AUTH_HEADERS.filter((k) => lower[k]).map((k) => [k, lower[k]]))
+      authAt = Date.now()
       authWaiter?.()
     }
     const query = queries.get(d.id)
@@ -117,7 +124,7 @@ let authing: Promise<Record<string, string>> | null = null
 export async function webAuth(fresh = false): Promise<Record<string, string>> {
   // Checked every time: headers cached from an anonymous playlist capture aren't the user's.
   if (!(await ses().cookies.get({ name: 'sp_dc' })).length) throw new SignedOut()
-  if (fresh) auth = null
+  if (fresh || Date.now() - authAt > AUTH_MAX_AGE_MS) auth = null
   if (auth) return auth
   authing ??= (async () => {
     try {
@@ -139,6 +146,16 @@ export async function webAuth(fresh = false): Promise<Record<string, string>> {
     }
   })()
   return authing
+}
+
+/** The Web API access token, or null while the web player is signed out. */
+export async function getToken(): Promise<string | null> {
+  try {
+    return (await webAuth()).authorization.replace(/^Bearer /, '')
+  } catch (err) {
+    if (err instanceof SignedOut) return null
+    throw err
+  }
 }
 
 // Opens the playlist in a hidden, muted web player just long enough to see one fetchPlaylist call.

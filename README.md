@@ -15,11 +15,11 @@ Connect device named MusicThing. The official Spotify app isn't needed. Requires
 
 ## Setup
 
-1. Create an app at <https://developer.spotify.com/dashboard> with redirect URI
-   `http://127.0.0.1:8888/callback` and the Web API enabled.
-2. Copy `.env.example` to `.env` and set `MAIN_VITE_SPOTIFY_CLIENT_ID`.
-3. `bun install`, then `bun run dev`. The first run builds librespot with cargo (a few minutes)
-   and opens a browser once to sign the player in; its credentials are cached after that.
+`bun install`, then `bun run dev`. The first run builds librespot with cargo (a few minutes).
+
+There's one Spotify login: an in-app window signs a hidden copy of Spotify's web player in, and
+its token drives the Web API, private playlists, queue editing and the first librespot sign-in
+(whose reusable credentials are cached after that). No developer-dashboard app is needed.
 
 ## Scripts
 
@@ -45,7 +45,6 @@ origin v1.0.10`). Wait for CI to attach the Linux builds to the GitHub Release.
 
 `.github/workflows/ci.yml` typechecks every push and PR. Pushing a `v*` tag that matches
 `package.json` (`git tag v1.0.8 && git push origin v1.0.8`) also builds Windows (NSIS), macOS
-(arm64 dmg/zip) and Linux (AppImage/deb) and attaches them to a GitHub Release. It needs the
-`MAIN_VITE_SPOTIFY_CLIENT_ID` repo secret. Builds are unsigned: macOS users have to run
+(arm64 dmg/zip) and Linux (AppImage/deb) and attaches them to a GitHub Release. Builds are unsigned: macOS users have to run
 `xattr -cr /Applications/MusicThing.app` once, and Windows shows SmartScreen. The homelab
 update feed still only gets what `bun run release` uploads.

@@ -4,9 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import iconDark from '../../resources/icon-dark.png?asset'
 import iconLight from '../../resources/icon-light.png?asset'
-import { getToken, login, logout } from './auth'
 import { startPlayer, stopPlayer } from './librespot'
-import { login as webLogin, playlistPage } from './webplayer'
+import { getToken, login, playlistPage } from './webplayer'
 import {
   move as connectMove,
   queue as connectQueue,
@@ -106,10 +105,13 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('auth:token', () => getToken())
-  ipcMain.handle('auth:login', () => login())
-  ipcMain.handle('auth:logout', () => logout())
   ipcMain.handle('web:playlist', (_, id: string, offset: number) => playlistPage(id, offset))
-  ipcMain.handle('web:login', () => webLogin(mainWindow ?? undefined))
+  // The player waits for the first sign-in when it has no cached credentials.
+  ipcMain.handle('web:login', async () => {
+    const ok = await login(mainWindow ?? undefined)
+    if (ok) startPlayer()
+    return ok
+  })
   ipcMain.handle('connect:queue', () => connectQueue())
   ipcMain.handle('connect:move', (_, from: QueueRef, after: QueueRef | null) =>
     connectMove(from, after)

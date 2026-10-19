@@ -36,8 +36,9 @@ Installed copies check `https://musicthing.marcusson.dev/latest.yml` at start-up
 6 hours, download newer builds in the background, and install them on quit (or via the tray's
 "Restart to update"). To ship one:
 
-1. Bump `version` in `package.json`.
-2. `bun run release` (needs SSH to the homelab as root; uploads to
+1. Bump `version` in `package.json`, commit, and push a matching tag (`git tag v1.0.10 && git push
+origin v1.0.10`). Wait for CI to attach the Linux builds to the GitHub Release.
+2. `bun run release` (builds Windows locally, takes Linux from that release; needs SSH to the homelab as root; uploads to
    `/srv/compose/edge/sites/musicthing/`, served by the edge Caddy).
 
 ### CI

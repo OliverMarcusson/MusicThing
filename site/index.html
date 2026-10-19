@@ -1,13 +1,14 @@
 <!doctype html>
 <!-- Landing page for https://musicthing.marcusson.dev/, uploaded by scripts/release.mjs.
      The page is the app: a Cover Flow of made-up albums, one per feature, driven by a player bar
-     whose main button is the download. Version, size and installer link come from latest.yml. -->
+     whose main button is the download. Version, size and file links come from latest.yml (Windows)
+     and latest-linux.yml; the button offers the visitor's own platform, the line under it the rest. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MusicThing: a quiet window for Spotify</title>
-  <meta name="description" content="A small Windows player for Spotify Premium: your playlists, the queue as Cover Flow, drag to reorder what plays next.">
+  <meta name="description" content="A small Windows and Linux player for Spotify Premium: your playlists, the queue as Cover Flow, drag to reorder what plays next.">
   <meta name="color-scheme" content="dark light">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='none' stroke='%239a9aa0' stroke-linecap='round'%3E%3Cpath d='M38 78Q122 40 218 94' stroke-width='26'/%3E%3Cpath d='M52 128Q120 98 198 142' stroke-width='23'/%3E%3Cpath d='M66 176Q118 154 178 188' stroke-width='20'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -122,6 +123,8 @@
       transition: background-color 0.9s ease;
     }
     .download svg { width: 18px; height: 18px; }
+    .also { width: min(1120px, 100% - 40px); margin: 10px auto 0; text-align: right; color: var(--muted); font-size: 0.875rem; }
+    .also:empty { display: none; }
 
     .notes {
       width: min(1120px, 100% - 40px); margin: 72px auto 0; padding-bottom: 40px;
@@ -143,6 +146,7 @@
       .bar { grid-template-columns: 1fr; justify-items: center; text-align: center; }
       .app { justify-content: center; }
       .download { justify-self: center; }
+      .also { text-align: center; }
       .notes { grid-template-columns: 1fr; gap: 24px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -187,14 +191,15 @@
         </div>
         <a class="download" id="download" href="latest.yml">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg>
-          Download for Windows
+          <span id="download-label">Download for Windows</span>
         </a>
       </div>
+      <p class="also" id="also"></p>
     </section>
 
     <section class="notes">
       <div><h2>What you need</h2><p>A Spotify Premium account, nothing else. MusicThing plays the music itself, so the Spotify app doesn't need to be installed. The first time, it asks you to sign in to Spotify in your browser twice: once for your library, once for playback. Reordering the queue asks once more.</p></div>
-      <div><h2>Installing</h2><p>The installer isn't signed yet, so Windows may stop it. Choose More info, then Run anyway.</p></div>
+      <div><h2>Installing</h2><p>The installer isn't signed yet, so Windows may stop it. Choose More info, then Run anyway. On Linux, make the AppImage executable (<code>chmod +x</code>) and run it, or install the .deb.</p></div>
       <div><h2>Updates</h2><p>New versions download in the background. A button in the corner restarts into one when it's ready, or it installs the next time you quit. Ctrl+U checks right away.</p></div>
     </section>
   </main>
@@ -209,19 +214,35 @@
   </footer>
 
   <script>
-    // Latest installer from the update feed that installed copies poll.
-    fetch('latest.yml', { cache: 'no-store' })
-      .then((r) => r.text())
-      .then((yml) => {
-        const field = (k) => yml.match(new RegExp(`^${k}: *'?([^'\\n]+)`, 'm'))?.[1]
-        const path = field('path')
-        if (!path) return
-        document.getElementById('download').href = path
-        document.getElementById('version').textContent = `MusicThing ${field('version')}`
-        const mb = Math.round(Number(yml.match(/^ +size: (\d+)/m)?.[1]) / 1e6)
-        document.getElementById('meta').textContent = `Windows 10 and 11${mb ? `, ${mb} MB` : ''}`
-      })
-      .catch(() => {})
+    // Latest builds from the update feeds that installed copies poll.
+    const onLinux = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)
+    const get = (file) =>
+      fetch(file, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')).catch(() => '')
+    const field = (yml, k) => yml.match(new RegExp(`^${k}: *'?([^'\\n]+)`, 'm'))?.[1]
+    Promise.all([get('latest.yml'), get('latest-linux.yml')]).then(([win, lin]) => {
+      const builds = [
+        { os: 'Windows', needs: 'Windows 10 and 11', yml: win, files: [['installer', field(win, 'path')]] },
+        // electron-builder's default .deb name; latest-linux.yml only lists the AppImage.
+        { os: 'Linux', needs: '64-bit Linux', yml: lin,
+          files: [['AppImage', field(lin, 'path')], ['.deb', `musicthing_${field(lin, 'version')}_amd64.deb`]] }
+      ].filter((b) => b.files[0][1])
+      const main = builds.find((b) => (b.os === 'Linux') === onLinux) ?? builds[0]
+      if (!main) return
+      document.getElementById('download').href = main.files[0][1]
+      document.getElementById('download-label').textContent = `Download for ${main.os}`
+      document.getElementById('version').textContent = `MusicThing ${field(main.yml, 'version')}`
+      const mb = Math.round(Number(main.yml.match(/^ +size: (\d+)/m)?.[1]) / 1e6)
+      document.getElementById('meta').textContent = `${main.needs}${mb ? `, ${mb} MB` : ''}`
+      const also = [main, ...builds.filter((b) => b !== main)].flatMap((b) =>
+        b.files.filter(([, href]) => href !== main.files[0][1]).map(([kind, href]) => {
+          const a = document.createElement('a')
+          a.href = href
+          a.textContent = `${b.os} ${kind}`
+          return a
+        })
+      )
+      document.getElementById('also').replaceChildren(...(also.length ? ['Also: '] : []), ...also.flatMap((a, i) => (i ? [' · ', a] : [a])))
+    })
 
     // Made-up albums, one per feature: [colour, sleeve, title, caption].
     const ALBUMS = [

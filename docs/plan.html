@@ -42,7 +42,7 @@
 <h2>Platform limits (February 2026 Dev Mode changes)</h2>
 <ul>
   <li>The app owner needs Premium, and each app is capped at 5 users. That's fine for a personal client.</li>
-  <li>You can only read items in playlists you own or collaborate on.</li>
+  <li>You can only read items in playlists you own or collaborate on. Other playlists are read through a hidden copy of Spotify's web player, which is against Spotify's developer terms and can break when the web player changes.</li>
   <li>Recommendations, audio features and featured playlists are gone, so there is no Home feed.</li>
 </ul>
 
@@ -72,13 +72,14 @@
 
 <h2>Milestones</h2>
 <div class="bar"><span></span></div>
-<p class="mut">3 of 5 done</p>
+<p class="mut">5 of 6 done</p>
 <ol>
   <li><span class="done">Done:</span> auth, plus a player bar that controls the active device (play/pause, skip, seek, volume)</li>
   <li><span class="done">Done:</span> library sidebar with playlist, album and Liked Songs views; click a track to play it</li>
   <li><span class="done">Done:</span> Ctrl+K search, queue popover, add to queue. No device picker: playback always targets this PC.</li>
-  <li>Album-art theming. Motion basics already shipped: art cross-fade, view fades, sliding sidebar highlight, hover-expand sidebar.</li>
-  <li>Tray, media keys, installer</li>
+  <li><span class="done">Done:</span> album-art theming: the playing cover sets the accent, the cover on screen sets the background wash. Cover Flow now playing.</li>
+  <li><span class="done">Done:</span> tray, installer (<code>bun run build:win</code>). Media keys need no code: the hidden Spotify app keeps the Windows media session.</li>
+  <li>Auto-updates from the homelab: <code>electron-updater</code> with a generic provider, release artifacts served by Caddy on the homelab, and a release script that builds and uploads them.</li>
 </ol>
 
 <h2>Running it</h2>

@@ -1,6 +1,6 @@
 import { createContext, useContext, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { AudioLines, Disc3, Heart, ListMusic } from 'lucide-react'
+import { Disc3, Heart, ListMusic } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { imageUrl, type Album, type Image, type Playlist } from '@/lib/spotify'
 import { usePaged } from '@/lib/use-paged'
@@ -62,27 +62,9 @@ export function Sidebar({
           onFocus={() => expand(0)}
           onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && collapse()}
         >
-          <nav className="flex w-64 flex-col gap-0.5 p-2">
-            <Row active={isActive('now')} onClick={() => onSelect({ kind: 'now' })}>
-              <Tile>
-                <AudioLines className="size-4" />
-              </Tile>
-              <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
-                Now playing
-              </span>
-            </Row>
-            <Row active={isActive('liked')} onClick={() => onSelect({ kind: 'liked' })}>
-              <Tile>
-                <Heart className="size-4 fill-current" />
-              </Tile>
-              <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
-                Liked Songs
-              </span>
-            </Row>
-          </nav>
-
-          {/* Icon tabs fit the collapsed rail; the label appears once the panel is open. */}
-          <div className="flex w-64 items-center gap-0.5 border-t px-2 pt-2" role="tablist">
+          {/* Icon tabs fit the collapsed rail; the label appears once the panel is open.
+              Now playing lives behind the player bar's cover, so the panel is only the library. */}
+          <div className="flex w-64 items-center gap-0.5 px-2 pt-2" role="tablist">
             {TABS.map(({ id, label, Icon }) => (
               <Button
                 key={id}
@@ -171,10 +153,17 @@ function PlaylistList({ isActive, onSelect }: ListProps): React.JSX.Element {
   const { items, error, sentinel } = usePaged<Playlist>('/me/playlists?limit=50')
   return (
     <>
+      {/* Liked Songs is pinned above the user's playlists. */}
+      <Row index={0} active={isActive('liked')} onClick={() => onSelect({ kind: 'liked' })}>
+        <Tile>
+          <Heart className="size-4 fill-current" />
+        </Tile>
+        <Label title="Liked Songs" subtitle="" />
+      </Row>
       {items.filter(Boolean).map((p, i) => (
         <Row
           key={p.id}
-          index={i}
+          index={i + 1}
           active={isActive('playlist', p.id)}
           onClick={() => onSelect({ kind: 'playlist', id: p.id, playlist: p })}
         >

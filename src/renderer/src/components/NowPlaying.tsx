@@ -32,11 +32,11 @@ export function NowPlaying({
   const thumb = track?.album?.images.at(-1)?.url
 
   return (
-    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[1fr_minmax(0,32rem)_1fr] items-center gap-6 border-t px-4">
+    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[1fr_minmax(0,32rem)_1fr] content-center items-start gap-6 border-t px-4">
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="flex min-w-0 items-center gap-3 self-center rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         {/* Cross-fade the art so a track change reads as a change, not a flicker. */}
         <span className="relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted">
@@ -199,7 +199,7 @@ export function Extras({
 
   return (
     <div
-      className={cn('flex min-w-0 items-center justify-end gap-2 text-muted-foreground', className)}
+      className={cn('flex h-9 min-w-0 items-center justify-end gap-2 text-muted-foreground', className)}
     >
       <Queue player={player} />
       <Volume2 className="ml-2 size-4 shrink-0" />

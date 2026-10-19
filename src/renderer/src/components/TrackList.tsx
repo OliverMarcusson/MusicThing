@@ -239,7 +239,8 @@ export function QueueAdd({ uri, player }: { uri: string; player: Player }): Reac
       title="Add to queue"
       onClick={add}
       className={cn(
-        'relative z-10 text-muted-foreground opacity-0 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100',
+        // A foreground tint, not ghost's accent, so the hover box shows on accent-coloured rows too.
+        'relative z-10 text-muted-foreground opacity-0 hover:bg-foreground/10 dark:hover:bg-foreground/10 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100',
         status !== 'idle' && 'opacity-100'
       )}
     >

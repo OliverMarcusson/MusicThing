@@ -1,5 +1,5 @@
 // Builds the Windows installer and uploads it to the homelab update feed that installed copies
-// poll (https://docs.marcusson.dev/musicthing/). Bump "version" in package.json first; the feed
+// poll (https://musicthing.marcusson.dev/). Bump "version" in package.json first; the feed
 // only offers a build whose version is higher than the installed one.
 // Usage: bun run release
 import { execFileSync } from 'node:child_process'

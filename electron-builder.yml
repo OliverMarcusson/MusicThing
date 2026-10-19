@@ -41,4 +41,4 @@ npmRebuild: false
 # Update feed on the homelab (Caddy, edge/sites/musicthing). scripts/release.mjs uploads to it.
 publish:
   provider: generic
-  url: https://docs.marcusson.dev/musicthing/
+  url: https://musicthing.marcusson.dev/

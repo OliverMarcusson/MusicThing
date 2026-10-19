@@ -29,7 +29,7 @@ bun run release    # build and upload to the update feed
 
 ## Releasing
 
-Installed copies check `https://docs.marcusson.dev/musicthing/latest.yml` at start-up and every
+Installed copies check `https://musicthing.marcusson.dev/latest.yml` at start-up and every
 6 hours, download newer builds in the background, and install them on quit (or via the tray's
 "Restart to update"). To ship one:
 

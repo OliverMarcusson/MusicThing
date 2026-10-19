@@ -1,0 +1,17 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import type { WebPage } from '../main/webplayer'
+
+const api = {
+  token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
+  login: (): Promise<string> => ipcRenderer.invoke('auth:login'),
+  logout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
+  hostname: (): Promise<string> => ipcRenderer.invoke('app:hostname'),
+  /** Playlist pages via the web player, for playlists the Web API refuses. */
+  webPlaylist: (id: string, offset: number): Promise<WebPage> =>
+    ipcRenderer.invoke('web:playlist', id, offset),
+  webLogin: (): Promise<boolean> => ipcRenderer.invoke('web:login')
+}
+
+export type Api = typeof api
+
+contextBridge.exposeInMainWorld('api', api)

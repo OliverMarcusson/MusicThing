@@ -1,0 +1,91 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Cover colours set by useArtAccent: the playing track's (accent) and the open view's (wash).
+   Registered so changes can cross-fade. */
+@property --art {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: oklch(0.72 0 0);
+}
+@property --view-art {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: oklch(0.72 0 0);
+}
+
+/* Dark only. The album art supplies the only accent: scrubber, focus rings, background wash.
+   Lightness is pinned and chroma capped, so every cover yields a readable tone on the dark UI. */
+:root {
+  --art-accent: oklch(from var(--art) 0.74 clamp(0, c, 0.17) h);
+  --art-wash: oklch(from var(--view-art) 0.5 clamp(0, c, 0.14) h / 0.16);
+  transition:
+    --art 0.8s ease,
+    --view-art 0.8s ease;
+  --radius: 0.5rem;
+  --background: oklch(0.155 0.004 270);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.19 0.004 270);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.96 0 0);
+  --primary-foreground: oklch(0.155 0.004 270);
+  --secondary: oklch(0.24 0.004 270);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.24 0.004 270);
+  --muted-foreground: oklch(0.72 0.006 270);
+  --accent: oklch(0.26 0.004 270);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: var(--art-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    transition: none;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-art: var(--art-accent);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased select-none;
+  }
+}

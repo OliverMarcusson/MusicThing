@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minimal Spotify client: plan</title>
+<style>
+  :root { --bg:#0f0f11; --fg:#f2f2f3; --mut:#a3a3ab; --line:#26262b; --acc:#1ed760; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif }
+  main { max-width:46rem; margin:0 auto; padding:4rem 1.5rem 6rem }
+  h1 { font-size:2rem; line-height:1.2; margin:0 0 .5rem }
+  h2 { font-size:1.15rem; margin:3rem 0 .75rem; padding-top:1.5rem; border-top:1px solid var(--line) }
+  p, li { color:var(--fg) } .mut { color:var(--mut) }
+  code { font-family:"Cascadia Code",Consolas,monospace; font-size:.88em; background:#1b1b1f; padding:.1em .35em; border-radius:4px }
+  table { width:100%; border-collapse:collapse; font-size:.95rem }
+  th, td { text-align:left; padding:.5rem .75rem .5rem 0; border-bottom:1px solid var(--line); vertical-align:top }
+  th { color:var(--mut); font-weight:600 }
+  ol li, ul li { margin:.3rem 0 }
+  .done { color:var(--acc); font-weight:600 }
+  .bar { display:flex; height:.5rem; border-radius:999px; overflow:hidden; background:var(--line); margin:.75rem 0 .25rem }
+  .bar span { width:60%; background:var(--acc) }
+  a { color:var(--fg) }
+</style>
+</head>
+<body>
+<main>
+<h1>Minimal Spotify client</h1>
+<p class="mut">Electron, React, shadcn/ui, Tailwind 4, Motion. Plan agreed 2026-10-19.</p>
+
+<h2>Decisions</h2>
+<table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr><td>Playback</td><td>Remote control over Spotify Connect. The official app or another device plays audio; this app controls it through the Web API.</td></tr>
+  <tr><td>Window</td><td>Normal window: hover-expand icon rail for the library, content area, persistent player bar. Closes to tray; the official Spotify app runs hidden.</td></tr>
+  <tr><td>Package manager</td><td>Bun</td></tr>
+</table>
+
+<h2>Why remote control</h2>
+<p>The Web Playback SDK needs Widevine and Spotify supports it in browsers only. Electron attempts, including the castLabs Widevine build, report cut-offs after about 30 seconds and license-server errors. Remote control is reliable now. In-app audio stays a separate experiment.</p>
+
+<h2>Platform limits (February 2026 Dev Mode changes)</h2>
+<ul>
+  <li>The app owner needs Premium, and each app is capped at 5 users. That's fine for a personal client.</li>
+  <li>You can only read items in playlists you own or collaborate on.</li>
+  <li>Recommendations, audio features and featured playlists are gone, so there is no Home feed.</li>
+</ul>
+
+<h2>Scope</h2>
+<table>
+  <tr><th>In</th><th>Out for now</th></tr>
+  <tr><td>Player bar: art, title, scrubber, controls, volume</td><td>Home and recommendations</td></tr>
+  <tr><td>Ctrl+K search</td><td>Lyrics</td></tr>
+  <tr><td>Library: playlists, Liked Songs, albums</td><td>Podcasts, social</td></tr>
+  <tr><td>Queue, device picker</td><td>Playlist editing</td></tr>
+  <tr><td>Media keys, tray</td><td>In-app audio</td></tr>
+</table>
+
+<h2>Architecture</h2>
+<ul>
+  <li><b>Auth:</b> PKCE in the main process (<code>src/main/auth.ts</code>) with the loopback redirect <code>http://127.0.0.1:8888/callback</code>. The refresh token is encrypted with <code>safeStorage</code>. The renderer only gets short-lived access tokens over IPC.</li>
+  <li><b>Data:</b> plain <code>fetch</code> to <code>api.spotify.com</code> (<code>lib/spotify.ts</code>). Playback state is polled every 1.5 s while the window is visible, and progress is interpolated locally (<code>lib/player.ts</code>).</li>
+  <li><b>UI:</b> customised shadcn Button and Slider. No router or state library: a view state plus a back stack covers it.</li>
+</ul>
+
+<h2>Design direction</h2>
+<ul>
+  <li>Near-black surface, high-contrast text, Segoe UI Variable.</li>
+  <li>Signature element: album art supplies the only accent colour, used for the scrubber, focus rings and a faint background wash.</li>
+  <li>Motion is limited to a shared-layout expand from the player bar to full now-playing, plus an art cross-fade on track change. Both honour reduced motion.</li>
+</ul>
+
+<h2>Milestones</h2>
+<div class="bar"><span></span></div>
+<p class="mut">3 of 5 done</p>
+<ol>
+  <li><span class="done">Done:</span> auth, plus a player bar that controls the active device (play/pause, skip, seek, volume)</li>
+  <li><span class="done">Done:</span> library sidebar with playlist, album and Liked Songs views; click a track to play it</li>
+  <li><span class="done">Done:</span> Ctrl+K search, queue popover, add to queue. No device picker: playback always targets this PC.</li>
+  <li>Album-art theming. Motion basics already shipped: art cross-fade, view fades, sliding sidebar highlight, hover-expand sidebar.</li>
+  <li>Tray, media keys, installer</li>
+</ol>
+
+<h2>Running it</h2>
+<ol>
+  <li>Create an app at <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a> with redirect URI <code>http://127.0.0.1:8888/callback</code> and the Web API enabled.</li>
+  <li>Copy <code>.env.example</code> to <code>.env</code> and set <code>MAIN_VITE_SPOTIFY_CLIENT_ID</code>.</li>
+  <li>Run <code>bun run dev</code>.</li>
+</ol>
+</main>
+</body>
+</html>

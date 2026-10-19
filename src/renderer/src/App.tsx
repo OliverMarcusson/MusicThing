@@ -233,62 +233,79 @@ function NowView({
     // Reaches back under the sidebar rail (72px, see Sidebar) so the page centres on the window,
     // like the player bar it replaces, rather than on the space beside the rail.
     <div className="-ml-[72px] flex h-full w-[calc(100%+72px)] flex-col items-center justify-center gap-2 overflow-hidden px-10">
-      {track ? (
-        <>
-          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2">
-            <CoverFlow player={player} />
-            {/* The title slides up on track change so the switch is legible. */}
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={track.id}
-                className="text-center"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.2 }}
-              >
-                <h1 className="text-2xl font-semibold">{track.name}</h1>
-                <p className="text-muted-foreground">
-                  {track.artists.map((a) => a.name).join(', ')}
-                </p>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-          {/* The player bar itself, minus the track the page already titles: same height, columns
+      {/* Empty and playing cross-fade, so the first song arrives instead of popping in. */}
+      <AnimatePresence mode="wait" initial={false}>
+        {track ? (
+          <motion.div
+            key="playing"
+            className="flex h-full w-full flex-col items-center"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+          >
+            <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2">
+              <CoverFlow player={player} />
+              {/* The title slides up on track change so the switch is legible. */}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={track.id}
+                  className="text-center"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <h1 className="text-2xl font-semibold">{track.name}</h1>
+                  <p className="text-muted-foreground">
+                    {track.artists.map((a) => a.name).join(', ')}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            {/* The player bar itself, minus the track the page already titles: same height, columns
               and edge insets (the negative margin undoes the page padding), so nothing moves when
               the bar slides away and these take over. */}
-          <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 self-stretch px-6 pb-4">
-            <span />
-            <Transport player={player} />
-            {/* Level with the seek bar: the same 16px row at the bottom of the controls block. */}
-            <Extras player={player} className="h-4 self-end" />
-          </div>
-        </>
-      ) : (
-        // Nothing playing: the mark, and the way in. The button opens search, same as Ctrl K.
-        <div className="flex flex-col items-center gap-8">
-          <svg
-            viewBox="0 0 256 256"
-            fill="none"
-            stroke="currentColor"
-            strokeLinecap="round"
-            aria-label="MusicThing"
-            // Red in the dev app, so it is never mistaken for the installed one.
-            className={cn(
-              'size-40',
-              import.meta.env.DEV ? 'text-red-400/80' : 'text-foreground/80'
-            )}
+            <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 self-stretch px-6 pb-4">
+              <span />
+              <Transport player={player} />
+              {/* Level with the seek bar: the same 16px row at the bottom of the controls block. */}
+              <Extras player={player} className="h-4 self-end" />
+            </div>
+          </motion.div>
+        ) : (
+          // Nothing playing: the mark, and the way in. The button opens search, same as Ctrl K.
+          <motion.div
+            key="empty"
+            className="flex flex-col items-center gap-8"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
           >
-            <path d="M38 78Q122 40 218 94" strokeWidth="26" />
-            <path d="M52 128Q120 98 198 142" strokeWidth="23" />
-            <path d="M66 176Q118 154 178 188" strokeWidth="20" />
-          </svg>
-          <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={onSearch}>
-            <SearchIcon />
-            <kbd className="font-sans text-sm">Ctrl K</kbd>
-          </Button>
-        </div>
-      )}
+            <svg
+              viewBox="0 0 256 256"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              aria-label="MusicThing"
+              // Red in the dev app, so it is never mistaken for the installed one.
+              className={cn(
+                'size-40',
+                import.meta.env.DEV ? 'text-red-400/80' : 'text-foreground/80'
+              )}
+            >
+              <path d="M38 78Q122 40 218 94" strokeWidth="26" />
+              <path d="M52 128Q120 98 198 142" strokeWidth="23" />
+              <path d="M66 176Q118 154 178 188" strokeWidth="20" />
+            </svg>
+            <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={onSearch}>
+              <SearchIcon />
+              <kbd className="font-sans text-sm">Ctrl K</kbd>
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

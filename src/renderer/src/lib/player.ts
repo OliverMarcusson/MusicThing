@@ -228,6 +228,21 @@ export function usePlayer() {
       })
       setQueueVersion((v) => v + 1)
     },
+    /** Shuffle and repeat apply to this computer's Spotify; the queue refetches to show the new order. */
+    setShuffle: async (on: boolean) => {
+      const id = await device()
+      await command('PUT', `/me/player/shuffle?state=${on}${id ? `&device_id=${id}` : ''}`, {
+        shuffle_state: on
+      })
+      setQueueVersion((v) => v + 1)
+    },
+    setRepeat: async (mode: PlaybackState['repeat_state']) => {
+      const id = await device()
+      await command('PUT', `/me/player/repeat?state=${mode}${id ? `&device_id=${id}` : ''}`, {
+        repeat_state: mode
+      })
+      setQueueVersion((v) => v + 1)
+    },
     seek: (ms: number) =>
       command('PUT', `/me/player/seek?position_ms=${Math.round(ms)}`, { progress_ms: ms }),
     setVolume: (percent: number) =>

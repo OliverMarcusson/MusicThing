@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Music, Pause, Play, SkipBack, SkipForward, Volume2 } from 'lucide-react'
+import {
+  Music,
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume2
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Queue } from '@/components/Queue'
 import { progressAt, type Player } from '@/lib/player'
-import { clock } from '@/lib/utils'
+import { clock, cn } from '@/lib/utils'
 
 const VOLUME_THROTTLE_MS = 150
+// Repeat cycles like Spotify's: off, the whole playlist or album, then the current song.
+const NEXT_REPEAT = { off: 'context', context: 'track', track: 'off' } as const
 
 export function NowPlaying({
   player,
@@ -73,6 +85,19 @@ export function NowPlaying({
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="Shuffle"
+            aria-pressed={!!state?.shuffle_state}
+            title="Shuffle"
+            disabled={!state}
+            // On: the accent colour; off: muted, like the other secondary controls.
+            className={cn('mr-1', state?.shuffle_state ? 'text-art' : 'text-muted-foreground')}
+            onClick={() => state && player.setShuffle(!state.shuffle_state)}
+          >
+            <Shuffle />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="Previous"
             // Nothing to go back to before the first track played this session.
             disabled={!state || player.history.length === 0}
@@ -110,6 +135,27 @@ export function NowPlaying({
             onClick={player.next}
           >
             <SkipForward className="fill-current" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={
+              state?.repeat_state === 'track'
+                ? 'Repeat song'
+                : state?.repeat_state === 'context'
+                  ? 'Repeat'
+                  : 'Repeat off'
+            }
+            aria-pressed={!!state && state.repeat_state !== 'off'}
+            title="Repeat"
+            disabled={!state}
+            className={cn(
+              'ml-1',
+              state && state.repeat_state !== 'off' ? 'text-art' : 'text-muted-foreground'
+            )}
+            onClick={() => state && player.setRepeat(NEXT_REPEAT[state.repeat_state])}
+          >
+            {state?.repeat_state === 'track' ? <Repeat1 /> : <Repeat />}
           </Button>
         </div>
         <div className="flex w-full items-center gap-2 text-[11px] tabular-nums text-muted-foreground">

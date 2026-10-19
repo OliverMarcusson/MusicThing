@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { AudioLines, Check, ListPlus, Music, Play, X } from 'lucide-react'
+import { AudioLines, Check, ListPlus, Music, Play, Shuffle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Player } from '@/lib/player'
 import { ApiError, imageUrl, type Image, type Track } from '@/lib/spotify'
@@ -62,6 +62,22 @@ export function TrackList<T>({
     )
   }
 
+  // Play starts at the top in order; Shuffle starts on a random track with shuffle on. Shuffle is
+  // set after playback starts, so it works even before this PC is the active device, and
+  // Spotify then orders the rest around the track that's playing.
+  // ponytail: Liked Songs has no context, so it plays the loaded tracks (first URI_QUEUE).
+  const start = async (shuffle: boolean): Promise<void> => {
+    const count = source.contextUri ? tracks.length : Math.min(tracks.length, URI_QUEUE)
+    const i = shuffle ? Math.floor(Math.random() * count) : 0
+    const track = tracks[i]
+    await player.play(
+      source.contextUri
+        ? { context_uri: source.contextUri, offset: { uri: track.uri } }
+        : { uris: tracks.slice(0, URI_QUEUE).map((t) => t.uri), offset: { uri: track.uri } }
+    )
+    await player.setShuffle(shuffle)
+  }
+
   const cols = showAlbum
     ? 'grid-cols-[3ch_minmax(0,3fr)_minmax(0,2fr)_2rem_3.5rem]'
     : 'grid-cols-[3ch_minmax(0,1fr)_2rem_3.5rem]'
@@ -79,6 +95,35 @@ export function TrackList<T>({
         <div className="min-w-0">
           <h1 className="line-clamp-2 text-3xl leading-[1.35] font-semibold">{title}</h1>
           {subtitle && <p className="mt-1 truncate text-sm text-muted-foreground">{subtitle}</p>}
+          <div className="mt-4 flex items-center gap-2">
+            <Button
+              size="icon"
+              className="size-11 rounded-full"
+              aria-label="Play"
+              title="Play"
+              disabled={!tracks.length}
+              onClick={(e) => {
+                start(false)
+                if (!e.shiftKey) onPlayed?.()
+              }}
+            >
+              <Play className="size-5 fill-current" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-11 rounded-full text-muted-foreground hover:text-foreground"
+              aria-label="Shuffle"
+              title="Shuffle"
+              disabled={!tracks.length}
+              onClick={(e) => {
+                start(true)
+                if (!e.shiftKey) onPlayed?.()
+              }}
+            >
+              <Shuffle className="size-5" />
+            </Button>
+          </div>
         </div>
       </header>
 

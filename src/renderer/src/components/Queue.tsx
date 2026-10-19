@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, Reorder } from 'motion/react'
-import { ListMusic, ListStart, Music, Play } from 'lucide-react'
+import { GripVertical, ListMusic, ListStart, Music, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Player } from '@/lib/player'
 import { api, imageUrl, type Track } from '@/lib/spotify'
@@ -241,11 +241,20 @@ function QueueRow({
       // Lifted while dragging, so it reads as picked up and passes over its neighbours.
       whileDrag={{ scale: 1.02, boxShadow: '0 12px 30px -10px rgb(0 0 0 / 0.6)', zIndex: 1 }}
       className={
-        'group relative flex items-center gap-3 rounded-md bg-background px-3 py-2 select-none hover:bg-accent/60' +
+        'group relative flex items-center gap-2 rounded-md bg-background py-2 pr-3 pl-1 select-none hover:bg-accent/60' +
         (uid ? ' cursor-grab active:cursor-grabbing' : '')
       }
     >
-      <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted">
+      {/* Grip marks the rows that can be dragged; read-only rows keep the space so covers line up. */}
+      {uid ? (
+        <GripVertical
+          aria-hidden
+          className="size-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground"
+        />
+      ) : (
+        <span className="size-4 shrink-0" />
+      )}
+      <span className="ml-1 grid size-9 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted">
         {url ? (
           <img src={url} alt="" draggable={false} className="size-full object-cover" />
         ) : (

@@ -23,7 +23,8 @@ export function useQueue(player: Player, enabled: boolean): Track[] | null {
   return queue
 }
 
-type ConnectItem = { uri: string; uid: string }
+type QueueRef = { index: number; uid: string }
+type ConnectItem = QueueRef & { uri: string }
 type Problem = { kind: 'signin' | 'failed'; message: string }
 
 /**
@@ -58,23 +59,19 @@ function useConnectQueue(
   return [items, problem]
 }
 
-type Row = { track: Track; uid?: string; key: string }
+type Row = { track: Track; ref?: QueueRef; key: string }
 
-// Pairs each Web API track with its Connect uid, walking both lists in order. Tracks that don't
-// line up (relinked or just changed) get no uid and stay read-only. With repeat on, Spotify lists
-// the same entries again under the same uids; only the first of each is editable, the repeats
-// follow from it.
+// Pairs each Web API track with its Connect entry, walking both lists in order. Tracks that don't
+// line up (relinked or just changed) get no entry and stay read-only. With repeat on, Spotify lists
+// the same entries again under the same uids, so keys add the position to stay unique.
 function align(tracks: Track[], items: ConnectItem[] | null): Row[] {
   let from = 0
-  const seen = new Set<string>()
   return tracks.map((track, i) => {
     const k = items?.findIndex((x, n) => n >= from && x.uri === track.uri) ?? -1
     if (k < 0) return { track, key: `${track.uri}-${i}` }
     from = k + 1
-    const uid = items![k].uid
-    if (seen.has(uid)) return { track, key: `${uid}-${i}` }
-    seen.add(uid)
-    return { track, uid, key: uid }
+    const { index, uid } = items![k]
+    return { track, ref: { index, uid }, key: `${uid}-${index}` }
   })
 }
 
@@ -113,10 +110,10 @@ export function Queue({ player }: { player: Player }): React.JSX.Element {
   const dropped = (row: Row): void => {
     const list = latest.current
     const i = list.findIndex((r) => r.key === row.key)
-    if (!row.uid || i === aligned.findIndex((r) => r.key === row.key)) return
-    const after = i === 0 ? null : list[i - 1].uid
+    if (!row.ref || i === aligned.findIndex((r) => r.key === row.key)) return
+    const after = i === 0 ? null : list[i - 1].ref
     if (after === undefined) return // dropped below a row Connect doesn't know; nothing to anchor to
-    run(window.api.connectMove(row.uid, after))
+    run(window.api.connectMove(row.ref, after))
   }
 
   // Escape or a click outside the drawer closes it.
@@ -189,8 +186,8 @@ export function Queue({ player }: { player: Player }): React.JSX.Element {
                         key={row.key}
                         row={row}
                         onDrop={() => dropped(row)}
-                        onPlayNext={() => row.uid && run(window.api.connectMove(row.uid, null))}
-                        onSkipTo={() => row.uid && run(window.api.connectSkipTo(row.uid))}
+                        onPlayNext={() => row.ref && run(window.api.connectMove(row.ref, null))}
+                        onSkipTo={() => row.ref && run(window.api.connectSkipTo(row.ref.uid))}
                       />
                     ))}
                   </Reorder.Group>
@@ -237,7 +234,8 @@ function QueueRow({
   onPlayNext: () => void
   onSkipTo: () => void
 }): React.JSX.Element {
-  const { track: t, uid } = row
+  const { track: t } = row
+  const uid = row.ref?.uid
   const url = imageUrl(t.album?.images, 64)
   return (
     <Reorder.Item

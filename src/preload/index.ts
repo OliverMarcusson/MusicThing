@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { WebPage } from '../main/webplayer'
-import type { ConnectResult } from '../main/connect'
+import type { ConnectResult, QueueRef } from '../main/connect'
 
 const api = {
   token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
@@ -11,10 +11,10 @@ const api = {
     ipcRenderer.invoke('web:playlist', id, offset),
   webLogin: (): Promise<boolean> => ipcRenderer.invoke('web:login'),
   /** Queue editing over Spotify Connect; needs the web player signed in. */
-  connectQueue: (): Promise<ConnectResult<{ uri: string; uid: string }[]>> =>
+  connectQueue: (): Promise<ConnectResult<(QueueRef & { uri: string })[]>> =>
     ipcRenderer.invoke('connect:queue'),
-  connectMove: (uid: string, after: string | null): Promise<ConnectResult<true>> =>
-    ipcRenderer.invoke('connect:move', uid, after),
+  connectMove: (from: QueueRef, after: QueueRef | null): Promise<ConnectResult<true>> =>
+    ipcRenderer.invoke('connect:move', from, after),
   connectSkipTo: (uid: string): Promise<ConnectResult<true>> =>
     ipcRenderer.invoke('connect:skipTo', uid),
   connectSkipBy: (n: number, uri: string): Promise<ConnectResult<true>> =>

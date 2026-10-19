@@ -11,7 +11,8 @@ import {
   move as connectMove,
   queue as connectQueue,
   skipBy as connectSkipBy,
-  skipTo as connectSkipTo
+  skipTo as connectSkipTo,
+  type QueueRef
 } from './connect'
 
 let mainWindow: BrowserWindow | null = null
@@ -109,7 +110,9 @@ app.whenReady().then(() => {
   ipcMain.handle('web:playlist', (_, id: string, offset: number) => playlistPage(id, offset))
   ipcMain.handle('web:login', () => webLogin(mainWindow ?? undefined))
   ipcMain.handle('connect:queue', () => connectQueue())
-  ipcMain.handle('connect:move', (_, uid: string, after: string | null) => connectMove(uid, after))
+  ipcMain.handle('connect:move', (_, from: QueueRef, after: QueueRef | null) =>
+    connectMove(from, after)
+  )
   ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
   ipcMain.handle('connect:skipBy', (_, n: number, uri: string) => connectSkipBy(n, uri))
 

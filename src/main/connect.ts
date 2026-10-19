@@ -82,13 +82,23 @@ async function cluster(): Promise<Cluster> {
   return res.json()
 }
 
-function send(c: Cluster, command: Record<string, unknown>): Promise<Response> {
-  return call(`/connect-state/v1/player/command/from/${DEVICE_ID}/to/${c.active_device_id}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      command: { ...command, logging_params: { command_id: randomBytes(16).toString('hex') } }
-    })
-  })
+async function send(c: Cluster, command: Record<string, unknown>): Promise<Response> {
+  try {
+    return await call(
+      `/connect-state/v1/player/command/from/${DEVICE_ID}/to/${c.active_device_id}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          command: { ...command, logging_params: { command_id: randomBytes(16).toString('hex') } }
+        })
+      }
+    )
+  } catch (err) {
+    // The cluster keeps the last queue after playback stops, but no device is left to take commands.
+    if (err instanceof Error && err.message.endsWith('404'))
+      throw new Error('Nothing is playing; start a song to edit the queue.')
+    throw err
+  }
 }
 
 // One operation at a time, each on fresh state, so quick drags can't race on a stale revision.
@@ -125,20 +135,53 @@ const find = (c: Cluster, uid: string): QueueItem => {
   return item
 }
 
-/** Upcoming tracks in play order, with the uids the other calls take. */
-export const queue = (): Promise<ConnectResult<{ uri: string; uid: string }[]>> =>
+/** An entry in the upcoming list: its position there and its uid, checked against fresh state. */
+export type QueueRef = { index: number; uid: string }
+
+/**
+ * Upcoming tracks in play order. With repeat on, Spotify lists the same entries again under the
+ * same uids, so `index` (into the full list) is what tells two of them apart.
+ */
+export const queue = (): Promise<ConnectResult<(QueueRef & { uri: string })[]>> =>
   op(async () =>
-    (await cluster()).player_state.next_tracks.filter(isTrack).map(({ uri, uid }) => ({ uri, uid }))
+    (await cluster()).player_state.next_tracks
+      .map(({ uri, uid }, index) => ({ uri, uid, index }))
+      .filter(isTrack)
   )
 
-/** Moves a queued track to just after `after` (another uid), or to the front when null. */
-export const move = (uid: string, after: string | null): Promise<ConnectResult<true>> =>
+/**
+ * Moves an entry to just after `after`, or to the front when null. A repeated entry isn't a slot
+ * of its own (Spotify replays the earlier one), so dragging it queues a copy of the song there.
+ */
+export const move = (from: QueueRef, after: QueueRef | null): Promise<ConnectResult<true>> =>
   op(async () => {
     const c = await cluster()
-    const next = c.player_state.next_tracks.filter((t) => t.uid !== uid)
-    const to = after === null ? 0 : next.findIndex((t) => t.uid === after) + 1
-    if (after !== null && to === 0) throw new Error('The queue changed; try again.')
-    next.splice(to, 0, find(c, uid))
+    const list = c.player_state.next_tracks
+    const at = (r: QueueRef): QueueItem => {
+      if (list[r.index]?.uid !== r.uid) throw new Error('The queue changed; try again.')
+      return list[r.index]
+    }
+    const item = at(from)
+    if (after) at(after)
+    const repeat = list.findIndex((t) => t.uid === from.uid) < from.index
+    const next = [...list]
+    let to = after ? after.index + 1 : 0
+    if (!repeat) {
+      next.splice(from.index, 1)
+      if (from.index < to) to--
+    }
+    next.splice(
+      to,
+      0,
+      repeat
+        ? {
+            uri: item.uri,
+            uid: `q${randomBytes(8).toString('hex')}`,
+            provider: 'queue',
+            metadata: { is_queued: 'true' }
+          }
+        : item
+    )
     await send(c, {
       endpoint: 'set_queue',
       next_tracks: next,

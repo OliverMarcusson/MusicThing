@@ -1,12 +1,11 @@
 import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, Tray } from 'electron'
 import { join } from 'path'
-import { hostname } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import iconDark from '../../resources/icon-dark.png?asset'
 import iconLight from '../../resources/icon-light.png?asset'
 import { getToken, login, logout } from './auth'
-import { hideSpotify, showSpotify, spotifyHidden, watchSpotify } from './spotify-window'
+import { startPlayer, stopPlayer } from './librespot'
 import { login as webLogin, playlistPage } from './webplayer'
 import { move as connectMove, queue as connectQueue, skipTo as connectSkipTo } from './connect'
 
@@ -74,14 +73,11 @@ function createTray(): void {
   })
   tray.setToolTip('MusicThing')
   tray.on('click', showWindow)
-  // Rebuilt on open so the Spotify toggle label stays current.
+  // Rebuilt on open so the update entry appears once one is ready.
   tray.on('right-click', () =>
     tray?.popUpContextMenu(
       Menu.buildFromTemplate([
         { label: 'Open', click: showWindow },
-        spotifyHidden()
-          ? { label: 'Show Spotify app', click: () => showSpotify() }
-          : { label: 'Hide Spotify app', click: () => hideSpotify() },
         { type: 'separator' },
         ...(updateReady
           ? [{ label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }]
@@ -105,7 +101,6 @@ app.whenReady().then(() => {
   ipcMain.handle('auth:token', () => getToken())
   ipcMain.handle('auth:login', () => login())
   ipcMain.handle('auth:logout', () => logout())
-  ipcMain.handle('app:hostname', () => hostname())
   ipcMain.handle('web:playlist', (_, id: string, offset: number) => playlistPage(id, offset))
   ipcMain.handle('web:login', () => webLogin(mainWindow ?? undefined))
   ipcMain.handle('connect:queue', () => connectQueue())
@@ -115,8 +110,7 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
   checkForUpdates()
-  hideSpotify()
-  watchSpotify()
+  startPlayer()
 })
 
 // Installed builds poll the homelab feed (electron-builder.yml `publish`) and download in the
@@ -130,10 +124,7 @@ function checkForUpdates(): void {
   setInterval(check, UPDATE_CHECK_MS)
 }
 
-// Give the Spotify window back (minimized) so it isn't stranded invisible after we exit.
-app.on('before-quit', (e) => {
-  if (quitting) return
+app.on('before-quit', () => {
   quitting = true
-  e.preventDefault()
-  showSpotify(true).finally(() => app.quit())
+  stopPlayer()
 })

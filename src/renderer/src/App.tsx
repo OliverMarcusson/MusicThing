@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { NowPlaying } from '@/components/NowPlaying'
+import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
 import { Search } from '@/components/Search'
 import { Sidebar } from '@/components/Sidebar'
 import { TrackList } from '@/components/TrackList'
@@ -186,7 +186,24 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
             </main>
           </div>
         </div>
-        <NowPlaying player={player} onOpen={() => setView({ kind: 'now' })} />
+        {/* The bar slides down out of the window while Now playing shows the same controls,
+            and back up when you leave. Height and offset move together, so the page grows
+            into the space instead of jumping. */}
+        <motion.div
+          className="shrink-0 overflow-hidden"
+          initial={false}
+          animate={{ height: view.kind === 'now' ? 0 : 'auto' }}
+          transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
+          inert={view.kind === 'now'}
+        >
+          <motion.div
+            initial={false}
+            animate={{ y: view.kind === 'now' ? '100%' : 0 }}
+            transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
+          >
+            <NowPlaying player={player} onOpen={() => setView({ kind: 'now' })} />
+          </motion.div>
+        </motion.div>
         <Search
           open={searchOpen}
           onOpenChange={setSearchOpen}
@@ -219,6 +236,12 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
               <p className="text-muted-foreground">{track.artists.map((a) => a.name).join(', ')}</p>
             </motion.div>
           </AnimatePresence>
+          {/* The player bar's controls, laid out like the bar minus the track it already titles. */}
+          <div className="relative mt-4 grid w-full grid-cols-[1fr_minmax(0,32rem)_1fr] items-center gap-6">
+            <span />
+            <Transport player={player} />
+            <Extras player={player} />
+          </div>
         </>
       ) : (
         <p className="max-w-xs text-center text-sm text-muted-foreground">

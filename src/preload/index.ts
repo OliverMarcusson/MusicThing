@@ -6,7 +6,6 @@ const api = {
   token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
   login: (): Promise<string> => ipcRenderer.invoke('auth:login'),
   logout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
-  hostname: (): Promise<string> => ipcRenderer.invoke('app:hostname'),
   /** Playlist pages via the web player, for playlists the Web API refuses. */
   webPlaylist: (id: string, offset: number): Promise<WebPage> =>
     ipcRenderer.invoke('web:playlist', id, offset),

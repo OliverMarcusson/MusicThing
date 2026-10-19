@@ -45,7 +45,7 @@ export function usePlayer() {
     setHistory((h) => (back ? h.slice(0, -1) : prevTrack ? [...h, prevTrack].slice(-HISTORY) : h))
   }
 
-  // Playback always targets this computer's Spotify app; looked up once, retried while missing.
+  // Playback always targets MusicThing's own player (librespot); looked up once, retried while missing.
   const device = useCallback(async () => {
     deviceId.current ??= await localDeviceId().catch(() => null)
     return deviceId.current
@@ -233,7 +233,7 @@ export function usePlayer() {
       })
       setQueueVersion((v) => v + 1)
     },
-    /** Shuffle and repeat apply to this computer's Spotify; the queue refetches to show the new order. */
+    /** Shuffle and repeat apply to MusicThing's player; the queue refetches to show the new order. */
     setShuffle: async (on: boolean) => {
       const id = await device()
       await command('PUT', `/me/player/shuffle?state=${on}${id ? `&device_id=${id}` : ''}`, {
@@ -265,12 +265,8 @@ export function progressAt(state: PlaybackState, syncedAt: number, now = Date.no
   return Math.min(base + elapsed, state.item?.duration_ms ?? base)
 }
 
-// Spotify names the desktop app's device after the computer; fall back to any Computer device.
+// The name src/main/librespot.ts registers the player under.
 async function localDeviceId(): Promise<string | null> {
-  const [res, host] = await Promise.all([
-    api<{ devices: { id: string | null; name: string; type: string }[] }>('/me/player/devices'),
-    window.api.hostname()
-  ])
-  const pcs = res?.devices.filter((d) => d.type === 'Computer' && d.id) ?? []
-  return (pcs.find((d) => d.name.toLowerCase() === host.toLowerCase()) ?? pcs[0])?.id ?? null
+  const res = await api<{ devices: { id: string | null; name: string }[] }>('/me/player/devices')
+  return res?.devices.find((d) => d.name === 'MusicThing')?.id ?? null
 }

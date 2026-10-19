@@ -221,6 +221,11 @@ export function usePlayer() {
       return changeTrack('PUT', `/me/player/play${id ? `?device_id=${id}` : ''}`, target)
     },
     queueVersion,
+    /** After the queue or track changed outside the Web API (Connect commands). */
+    refreshQueue: () => {
+      setQueueVersion((v) => v + 1)
+      sync()
+    },
     addToQueue: async (uri: string) => {
       const id = await device()
       await api(`/me/player/queue?${new URLSearchParams({ uri, ...(id && { device_id: id }) })}`, {

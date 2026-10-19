@@ -26,6 +26,10 @@ let captured: Captured | null = null
 let capturing: Promise<Captured> | null = null
 // Receives the next captured request while a capture window is open.
 let hookCallback: ((c: Captured) => void) | null = null
+// Token headers from the web player's latest call to Spotify's own APIs, for connect.ts.
+const AUTH_HEADERS = ['authorization', 'client-token', 'spotify-app-version', 'app-platform']
+let auth: Record<string, string> | null = null
+let authWaiter: (() => void) | null = null
 
 export type WebTrack = {
   id: string | null
@@ -49,7 +53,7 @@ const ses = (): Electron.Session => {
 }
 
 let hooked = false
-function hook(onCapture: (c: Captured) => void): void {
+function hook(): void {
   if (hooked) return
   hooked = true
   // Body and headers arrive in separate callbacks; pair them by request id.
@@ -67,30 +71,78 @@ function hook(onCapture: (c: Captured) => void): void {
     }
     cb({})
   })
-  ses().webRequest.onBeforeSendHeaders({ urls: [`${PATHFINDER}*`] }, (d, cb) => {
+  // One listener per session, so it also collects the token headers from any Spotify API call.
+  ses().webRequest.onBeforeSendHeaders({ urls: ['https://*.spotify.com/*'] }, (d, cb) => {
+    const lower = Object.fromEntries(
+      Object.entries(d.requestHeaders).map(([k, v]) => [k.toLowerCase(), v])
+    )
+    if (lower.authorization && lower['client-token']) {
+      auth = Object.fromEntries(AUTH_HEADERS.filter((k) => lower[k]).map((k) => [k, lower[k]]))
+      authWaiter?.()
+    }
     const query = queries.get(d.id)
     queries.delete(d.id)
     if (query) {
       const headers = Object.fromEntries(
         Object.entries(d.requestHeaders).filter(([k]) => !SKIP_HEADERS.has(k.toLowerCase()))
       )
-      onCapture({ headers, query })
+      hookCallback?.({ headers, query })
     }
     cb({ requestHeaders: d.requestHeaders })
   })
 }
 
+function hiddenPlayer(): BrowserWindow {
+  const win = new BrowserWindow({
+    show: false,
+    // Desktop size: a small window gets the mobile web player, which uses other queries.
+    width: 1280,
+    height: 900,
+    webPreferences: { partition: PARTITION, sandbox: true, backgroundThrottling: false }
+  })
+  win.webContents.setAudioMuted(true)
+  return win
+}
+
+/** The web player isn't signed in to the user's account. */
+export class SignedOut extends Error {}
+
+let authing: Promise<Record<string, string>> | null = null
+/**
+ * The signed-in web player's token headers. `fresh` drops the cached ones (after a 401) and loads
+ * the web player again so its own code fetches new ones.
+ */
+export async function webAuth(fresh = false): Promise<Record<string, string>> {
+  // Checked every time: headers cached from an anonymous playlist capture aren't the user's.
+  if (!(await ses().cookies.get({ name: 'sp_dc' })).length) throw new SignedOut()
+  if (fresh) auth = null
+  if (auth) return auth
+  authing ??= (async () => {
+    try {
+      hook()
+      const win = hiddenPlayer()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          authWaiter = resolve
+          setTimeout(() => reject(new Error('Spotify web player did not load')), CAPTURE_TIMEOUT_MS)
+          win.loadURL('https://open.spotify.com/')
+        })
+      } finally {
+        authWaiter = null
+        win.destroy()
+      }
+      return auth!
+    } finally {
+      authing = null
+    }
+  })()
+  return authing
+}
+
 // Opens the playlist in a hidden, muted web player just long enough to see one fetchPlaylist call.
 function capture(playlistId: string): Promise<Captured> {
   capturing ??= new Promise<Captured>((resolve, reject) => {
-    const win = new BrowserWindow({
-      show: false,
-      // Desktop size: a small window gets the mobile web player, which uses other queries.
-      width: 1280,
-      height: 900,
-      webPreferences: { partition: PARTITION, sandbox: true, backgroundThrottling: false }
-    })
-    win.webContents.setAudioMuted(true)
+    const win = hiddenPlayer()
     const done = (err: Error | null, c?: Captured): void => {
       clearTimeout(timer)
       hookCallback = null
@@ -104,7 +156,7 @@ function capture(playlistId: string): Promise<Captured> {
       CAPTURE_TIMEOUT_MS
     )
     hookCallback = (c) => done(null, c)
-    hook((c) => hookCallback?.(c))
+    hook()
     win.loadURL(`https://open.spotify.com/playlist/${playlistId}`)
   })
   return capturing
@@ -197,7 +249,7 @@ export function login(parent?: BrowserWindow): Promise<boolean> {
     win.webContents.on('did-navigate', (_, url) => {
       if (!url.startsWith('https://open.spotify.com')) return
       ok = true
-      captured = null // the next capture picks up the signed-in token
+      captured = auth = null // the next capture picks up the signed-in token
       win.close()
     })
     win.on('closed', () => resolve(ok))

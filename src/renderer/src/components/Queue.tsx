@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
-import { ListMusic, Music } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion, Reorder } from 'motion/react'
+import { ListMusic, ListStart, Music, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Player } from '@/lib/player'
 import { api, imageUrl, type Track } from '@/lib/spotify'
@@ -23,16 +23,95 @@ export function useQueue(player: Player, enabled: boolean): Track[] | null {
   return queue
 }
 
+type ConnectItem = { uri: string; uid: string }
+type Problem = { kind: 'signin' | 'failed'; message: string }
+
 /**
- * Read-only "next up" drawer; the Web API can add to the queue but not reorder or jump within it.
- * Renders the toggle button in place and the drawer against the player bar (its positioned
- * ancestor), centred and attached to the bar's top edge.
+ * The same queue from Spotify Connect: it has the uids that reordering and skipping need, which
+ * the Web API's queue lacks. Null until loaded, or when Connect isn't available.
+ */
+function useConnectQueue(
+  player: Player,
+  enabled: boolean,
+  attempt: number
+): [ConnectItem[] | null, Problem | null] {
+  const [items, setItems] = useState<ConnectItem[] | null>(null)
+  const [problem, setProblem] = useState<Problem | null>(null)
+  const currentId = player.state?.item?.id
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    window.api.connectQueue().then((res) => {
+      if (cancelled) return
+      if ('ok' in res) {
+        setItems(res.ok)
+        setProblem(null)
+      } else {
+        setItems(null)
+        setProblem({ kind: res.error, message: res.message })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [enabled, currentId, player.queueVersion, attempt])
+  return [items, problem]
+}
+
+type Row = { track: Track; uid?: string; key: string }
+
+// Pairs each Web API track with its Connect uid, walking both lists in order. Tracks that don't
+// line up (relinked or just changed) get no uid and stay read-only.
+function align(tracks: Track[], items: ConnectItem[] | null): Row[] {
+  let from = 0
+  return tracks.map((track, i) => {
+    const k = items?.findIndex((x, n) => n >= from && x.uri === track.uri) ?? -1
+    if (k < 0) return { track, key: `${track.uri}-${i}` }
+    from = k + 1
+    return { track, uid: items![k].uid, key: items![k].uid }
+  })
+}
+
+/**
+ * "Next up" drawer: drag to reorder, play a track next, or skip straight to it. Renders the
+ * toggle button in place and the drawer against the player bar (its positioned ancestor),
+ * centred and attached to the bar's top edge.
  */
 export function Queue({ player }: { player: Player }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const queue = useQueue(player, open)
+  const [attempt, setAttempt] = useState(0)
+  const tracks = useQueue(player, open)
+  const [items, connectProblem] = useConnectQueue(player, open, attempt)
+  const [actionProblem, setActionProblem] = useState<Problem | null>(null)
+  const problem = actionProblem ?? connectProblem
   const drawer = useRef<HTMLDivElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
+
+  const aligned = useMemo(() => align(tracks ?? [], items), [tracks, items])
+  // A drag's order is shown until the refetched queue (a new `aligned`) replaces it.
+  const [dragged, setDragged] = useState<{ base: Row[]; rows: Row[] } | null>(null)
+  const rows = dragged?.base === aligned ? dragged.rows : aligned
+  const latest = useRef(rows)
+  useLayoutEffect(() => {
+    latest.current = rows
+  })
+
+  const run = async (
+    action: Promise<{ ok: true } | { error: Problem['kind']; message: string }>
+  ): Promise<void> => {
+    const res = await action
+    setActionProblem('ok' in res ? null : { kind: res.error, message: res.message })
+    player.refreshQueue()
+  }
+
+  const dropped = (row: Row): void => {
+    const list = latest.current
+    const i = list.findIndex((r) => r.key === row.key)
+    if (!row.uid || i === aligned.findIndex((r) => r.key === row.key)) return
+    const after = i === 0 ? null : list[i - 1].uid
+    if (after === undefined) return // dropped below a row Connect doesn't know; nothing to anchor to
+    run(window.api.connectMove(row.uid, after))
+  }
 
   // Escape or a click outside the drawer closes it.
   useEffect(() => {
@@ -83,43 +162,126 @@ export function Queue({ player }: { player: Player }): React.JSX.Element {
               transition={{ type: 'spring', duration: 0.35, bounce: 0 }}
             >
               <p className="px-4 pt-4 pb-2 text-sm font-medium">Next up</p>
-              <div className="max-h-[min(20rem,40vh)] overflow-y-auto px-1 pb-2">
-                {queue === null ? (
+              <motion.div
+                layoutScroll
+                className="max-h-[min(20rem,40vh)] overflow-y-auto px-1 pb-2"
+              >
+                {tracks === null ? (
                   <p className="px-3 py-6 text-center text-sm text-muted-foreground">Loading…</p>
-                ) : queue.length === 0 ? (
+                ) : rows.length === 0 ? (
                   <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                     Nothing queued.
                   </p>
                 ) : (
-                  queue.map((t, i) => {
-                    const url = imageUrl(t.album?.images, 64)
-                    return (
-                      <div
-                        key={`${t.uri}-${i}`}
-                        className="flex items-center gap-3 rounded-md px-3 py-2"
-                      >
-                        <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted">
-                          {url ? (
-                            <img src={url} alt="" className="size-full object-cover" />
-                          ) : (
-                            <Music className="size-4 text-muted-foreground/50" />
-                          )}
-                        </span>
-                        <span className="min-w-0 text-sm">
-                          <span className="block truncate">{t.name}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {t.artists.map((a) => a.name).join(', ')}
-                          </span>
-                        </span>
-                      </div>
-                    )
-                  })
+                  <Reorder.Group
+                    axis="y"
+                    values={rows}
+                    onReorder={(next) => setDragged({ base: aligned, rows: next })}
+                  >
+                    {rows.map((row) => (
+                      <QueueRow
+                        key={row.key}
+                        row={row}
+                        onDrop={() => dropped(row)}
+                        onPlayNext={() => row.uid && run(window.api.connectMove(row.uid, null))}
+                        onSkipTo={() => row.uid && run(window.api.connectSkipTo(row.uid))}
+                      />
+                    ))}
+                  </Reorder.Group>
                 )}
-              </div>
+              </motion.div>
+              {problem && (
+                <div className="flex items-center gap-3 border-t px-4 py-3 text-xs text-muted-foreground">
+                  <p className="flex-1">
+                    {problem.kind === 'signin'
+                      ? "Sign in to Spotify's web player to reorder and skip within the queue."
+                      : problem.message}
+                  </p>
+                  {problem.kind === 'signin' && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        if (!(await window.api.webLogin())) return
+                        setActionProblem(null)
+                        setAttempt((a) => a + 1)
+                      }}
+                    >
+                      Sign in
+                    </Button>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </>
+  )
+}
+
+function QueueRow({
+  row,
+  onDrop,
+  onPlayNext,
+  onSkipTo
+}: {
+  row: Row
+  onDrop: () => void
+  onPlayNext: () => void
+  onSkipTo: () => void
+}): React.JSX.Element {
+  const { track: t, uid } = row
+  const url = imageUrl(t.album?.images, 64)
+  return (
+    <Reorder.Item
+      value={row}
+      drag={uid ? 'y' : false}
+      onDragEnd={onDrop}
+      // Lifted while dragging, so it reads as picked up and passes over its neighbours.
+      whileDrag={{ scale: 1.02, boxShadow: '0 12px 30px -10px rgb(0 0 0 / 0.6)', zIndex: 1 }}
+      className={
+        'group relative flex items-center gap-3 rounded-md bg-background px-3 py-2 select-none hover:bg-accent/60' +
+        (uid ? ' cursor-grab active:cursor-grabbing' : '')
+      }
+    >
+      <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted">
+        {url ? (
+          <img src={url} alt="" draggable={false} className="size-full object-cover" />
+        ) : (
+          <Music className="size-4 text-muted-foreground/50" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 text-sm">
+        <span className="block truncate">{t.name}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {t.artists.map((a) => a.name).join(', ')}
+        </span>
+      </span>
+      {uid && (
+        <span className="flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Play ${t.name} next`}
+            title="Play next"
+            className="text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
+            onClick={onPlayNext}
+          >
+            <ListStart />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Skip to ${t.name}`}
+            title="Skip to here"
+            className="text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
+            onClick={onSkipTo}
+          >
+            <Play />
+          </Button>
+        </span>
+      )}
+    </Reorder.Item>
   )
 }

@@ -8,6 +8,7 @@ import iconLight from '../../resources/icon-light.png?asset'
 import { getToken, login, logout } from './auth'
 import { hideSpotify, showSpotify, spotifyHidden, watchSpotify } from './spotify-window'
 import { login as webLogin, playlistPage } from './webplayer'
+import { move as connectMove, queue as connectQueue, skipTo as connectSkipTo } from './connect'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -107,6 +108,9 @@ app.whenReady().then(() => {
   ipcMain.handle('app:hostname', () => hostname())
   ipcMain.handle('web:playlist', (_, id: string, offset: number) => playlistPage(id, offset))
   ipcMain.handle('web:login', () => webLogin(mainWindow ?? undefined))
+  ipcMain.handle('connect:queue', () => connectQueue())
+  ipcMain.handle('connect:move', (_, uid: string, after: string | null) => connectMove(uid, after))
+  ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
 
   createWindow()
   createTray()

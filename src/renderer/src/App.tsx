@@ -240,12 +240,13 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
               </motion.div>
             </AnimatePresence>
           </div>
-          {/* The player bar's controls, in the bar's columns minus the track the page already
-              titles. Queue and volume line up with the play button, not the whole block. */}
-          <div className="relative grid w-full shrink-0 grid-cols-[1fr_minmax(0,32rem)_1fr] items-start gap-6 pt-2 pb-5">
+          {/* The player bar itself, minus the track the page already titles: same height, columns
+              and edge insets (the negative margin undoes the page padding), so nothing moves when
+              the bar slides away and these take over. */}
+          <div className="relative -mx-10 grid h-20 shrink-0 grid-cols-[1fr_minmax(0,32rem)_1fr] items-center gap-6 self-stretch px-4">
             <span />
             <Transport player={player} />
-            <Extras player={player} className="h-9" />
+            <Extras player={player} />
           </div>
         </>
       ) : (

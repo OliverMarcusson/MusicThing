@@ -16,7 +16,9 @@ const api = {
   connectMove: (uid: string, after: string | null): Promise<ConnectResult<true>> =>
     ipcRenderer.invoke('connect:move', uid, after),
   connectSkipTo: (uid: string): Promise<ConnectResult<true>> =>
-    ipcRenderer.invoke('connect:skipTo', uid)
+    ipcRenderer.invoke('connect:skipTo', uid),
+  connectSkipBy: (n: number, uri: string): Promise<ConnectResult<true>> =>
+    ipcRenderer.invoke('connect:skipBy', n, uri)
 }
 
 export type Api = typeof api

@@ -7,7 +7,12 @@ import iconLight from '../../resources/icon-light.png?asset'
 import { getToken, login, logout } from './auth'
 import { startPlayer, stopPlayer } from './librespot'
 import { login as webLogin, playlistPage } from './webplayer'
-import { move as connectMove, queue as connectQueue, skipTo as connectSkipTo } from './connect'
+import {
+  move as connectMove,
+  queue as connectQueue,
+  skipBy as connectSkipBy,
+  skipTo as connectSkipTo
+} from './connect'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -106,6 +111,7 @@ app.whenReady().then(() => {
   ipcMain.handle('connect:queue', () => connectQueue())
   ipcMain.handle('connect:move', (_, uid: string, after: string | null) => connectMove(uid, after))
   ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
+  ipcMain.handle('connect:skipBy', (_, n: number, uri: string) => connectSkipBy(n, uri))
 
   createWindow()
   createTray()

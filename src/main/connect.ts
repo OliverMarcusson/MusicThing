@@ -117,6 +117,8 @@ function op<T>(fn: () => Promise<T>): Promise<ConnectResult<T>> {
   return result
 }
 
+const isTrack = (t: QueueItem): boolean => /^spotify:(track|episode):/.test(t.uri)
+
 const find = (c: Cluster, uid: string): QueueItem => {
   const item = c.player_state.next_tracks.find((t) => t.uid === uid)
   if (!item) throw new Error('That track is no longer in the queue.')
@@ -126,9 +128,7 @@ const find = (c: Cluster, uid: string): QueueItem => {
 /** Upcoming tracks in play order, with the uids the other calls take. */
 export const queue = (): Promise<ConnectResult<{ uri: string; uid: string }[]>> =>
   op(async () =>
-    (await cluster()).player_state.next_tracks
-      .filter((t) => /^spotify:(track|episode):/.test(t.uri))
-      .map(({ uri, uid }) => ({ uri, uid }))
+    (await cluster()).player_state.next_tracks.filter(isTrack).map(({ uri, uid }) => ({ uri, uid }))
   )
 
 /** Moves a queued track to just after `after` (another uid), or to the front when null. */
@@ -145,6 +145,29 @@ export const move = (uid: string, after: string | null): Promise<ConnectResult<t
       prev_tracks: c.player_state.prev_tracks,
       queue_revision: c.player_state.queue_revision
     })
+    return true as const
+  })
+
+/**
+ * Cover Flow's batched skip, `n` tracks forward or back to `uri`, as one ordered set of commands.
+ * One "next" per track through the Web API can arrive out of step and land on the wrong track.
+ */
+export const skipBy = (n: number, uri: string): Promise<ConnectResult<true>> =>
+  op(async () => {
+    const c = await cluster()
+    if (n > 0) {
+      // The player skips forward to the first queued copy of `uri`, so that must be the nth.
+      const next = c.player_state.next_tracks.filter(isTrack)
+      if (next.findIndex((t) => t.uri === uri) !== n - 1)
+        throw new Error('The queue changed; try again.')
+      await send(c, { endpoint: 'skip_next', track: { uri, uid: next[n - 1].uid } })
+    } else {
+      if (c.player_state.prev_tracks.filter(isTrack).at(n)?.uri !== uri)
+        throw new Error('The queue changed; try again.')
+      // "Previous" mid-song restarts it; from the top it steps back a track.
+      await send(c, { endpoint: 'seek_to', value: 0, position: 0 })
+      for (let i = 0; i < -n; i++) await send(c, { endpoint: 'skip_prev' })
+    }
     return true as const
   })
 

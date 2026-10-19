@@ -88,6 +88,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
 
   const viewKey = 'id' in view ? view.id : view.kind
 
+  // Now playing carries the bar's controls once there's a track; until then the bar stays.
+  const barHidden = view.kind === 'now' && !!player.state?.item
+
   // The accent follows the playing track; the background wash follows the cover on screen.
   const trackArt = imageUrl(player.state?.item?.album?.images, 64)
   useArtAccent('--art', trackArt)
@@ -192,13 +195,13 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
         <motion.div
           className="shrink-0 overflow-hidden"
           initial={false}
-          animate={{ height: view.kind === 'now' ? 0 : 'auto' }}
+          animate={{ height: barHidden ? 0 : 'auto' }}
           transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
-          inert={view.kind === 'now'}
+          inert={barHidden}
         >
           <motion.div
             initial={false}
-            animate={{ y: view.kind === 'now' ? '100%' : 0 }}
+            animate={{ y: barHidden ? '100%' : 0 }}
             transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
           >
             <NowPlaying player={player} onOpen={() => setView({ kind: 'now' })} />
@@ -243,7 +246,7 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
           {/* The player bar itself, minus the track the page already titles: same height, columns
               and edge insets (the negative margin undoes the page padding), so nothing moves when
               the bar slides away and these take over. */}
-          <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[1fr_minmax(0,32rem)_1fr] content-center items-start gap-6 self-stretch px-4 pb-4">
+          <div className="relative -mx-10 grid h-24 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 self-stretch px-4 pb-4">
             <span />
             <Transport player={player} />
             <Extras player={player} />

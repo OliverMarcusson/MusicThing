@@ -32,7 +32,7 @@ export function NowPlaying({
   const thumb = track?.album?.images.at(-1)?.url
 
   return (
-    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[1fr_minmax(0,32rem)_1fr] content-center items-start gap-6 border-t px-4">
+    <footer className="relative z-10 grid h-20 shrink-0 bg-background grid-cols-[minmax(0,1fr)_minmax(0,32rem)_minmax(0,1fr)] content-center items-start gap-6 border-t px-4">
       <button
         type="button"
         onClick={onOpen}

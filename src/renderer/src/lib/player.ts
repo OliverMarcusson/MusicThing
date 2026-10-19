@@ -148,11 +148,15 @@ export function usePlayer() {
       lastCommand.current = Date.now()
       lastSkip.current = { dir: n > 0 ? 'next' : 'previous', at: Date.now() }
       try {
-        // "Previous" mid-song restarts it; from the top it steps back a track.
-        if (n < 0) await api('/me/player/seek?position_ms=0', { method: 'PUT' })
-        for (let i = 0; i < Math.abs(n); i++) {
-          lastCommand.current = Date.now()
-          await api(`/me/player/${n > 0 ? 'next' : 'previous'}`, { method: 'POST' })
+        // One Connect batch lands exactly; the Web API's one-command-per-track is the fallback
+        // (web player signed out, or the queue moved since Cover Flow drew it).
+        if (!('ok' in (await window.api.connectSkipBy(n, target.uri)))) {
+          // "Previous" mid-song restarts it; from the top it steps back a track.
+          if (n < 0) await api('/me/player/seek?position_ms=0', { method: 'PUT' })
+          for (let i = 0; i < Math.abs(n); i++) {
+            lastCommand.current = Date.now()
+            await api(`/me/player/${n > 0 ? 'next' : 'previous'}`, { method: 'POST' })
+          }
         }
       } catch (err) {
         setError(err)

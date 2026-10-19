@@ -60,37 +60,46 @@ export function usePlayer() {
     return deviceId.current
   }, [])
 
+  // A playlist that runs out without repeat stops on its first track, paused at 0:00, which
+  // Spotify reports just like a paused track. Catch the moment it happens (playing one track,
+  // then paused at the start of another, after reaching its end or pressing next) and show
+  // nothing playing until it plays again.
+  // ponytail: "next" on the last track while paused can't be told from an ordinary skip.
+  const show = useCallback((next: PlaybackState | null, startedAt: number) => {
+    const prev = shown.current
+    const item = next?.item
+    const skipped =
+      lastSkip.current?.dir === 'next' && startedAt - lastSkip.current.at < BACK_WINDOW_MS
+    if (
+      prev.state?.is_playing &&
+      prev.state.repeat_state === 'off' &&
+      item &&
+      !next.is_playing &&
+      (next.progress_ms ?? 0) < 1000 &&
+      item.id !== prev.state.item?.id &&
+      (skipped ||
+        progressAt(prev.state, prev.syncedAt, startedAt) >=
+          (prev.state.item?.duration_ms ?? Infinity) - END_MARGIN_MS)
+    )
+      ended.current = item.id
+    if (ended.current && (next?.is_playing || item?.id !== ended.current)) ended.current = null
+    setState(ended.current ? null : next)
+  }, [])
+
   const sync = useCallback(async () => {
     const startedAt = Date.now()
     try {
       const next = await api<PlaybackState>('/me/player')
       // Drop polls that started before, or too soon after, the latest command.
       if (startedAt < lastCommand.current + SETTLE_MS) return
-      // A playlist that runs out without repeat stops on its first track, paused at 0:00, which
-      // Spotify reports just like a paused track. Catch the moment it happens (playing the end of
-      // one track, then paused at the start of another) and show nothing playing until it plays.
-      const prev = shown.current
-      const item = next?.item
-      if (
-        prev.state?.is_playing &&
-        prev.state.repeat_state === 'off' &&
-        item &&
-        !next.is_playing &&
-        (next.progress_ms ?? 0) < 1000 &&
-        item.id !== prev.state.item?.id &&
-        progressAt(prev.state, prev.syncedAt, startedAt) >=
-          (prev.state.item?.duration_ms ?? Infinity) - END_MARGIN_MS
-      )
-        ended.current = item.id
-      if (ended.current && (next?.is_playing || item?.id !== ended.current)) ended.current = null
-      setState(ended.current ? null : next)
+      show(next, startedAt)
       setSyncedAt(startedAt)
       setError(null)
     } catch (err) {
       // Transient poll failures (429/5xx) are retried by the next poll; only surface auth loss.
       if (err instanceof Unauthorized) setError(err)
     }
-  }, [])
+  }, [show])
 
   useEffect(() => {
     sync()
@@ -153,7 +162,7 @@ export function usePlayer() {
           next?.item?.id !== before?.item?.id ||
           (beforeProgress > 3000 && (next?.progress_ms ?? 0) < 2000)
         if (next && changed) {
-          setState(next)
+          show(next, startedAt)
           setSyncedAt(startedAt)
           setError(null)
           break
@@ -161,7 +170,7 @@ export function usePlayer() {
       }
       lastCommand.current = 0
     },
-    [state, syncedAt, sync]
+    [state, syncedAt, sync, show]
   )
 
   /**

@@ -89,8 +89,8 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
 
   const viewKey = 'id' in view ? view.id : view.kind
 
-  // Now playing carries the bar's controls once there's a track; until then the bar stays.
-  const barHidden = view.kind === 'now' && !!player.state?.item
+  // Now playing carries the bar's controls, or with nothing playing, the way to start something.
+  const barHidden = view.kind === 'now'
 
   // The accent follows the playing track; the background wash follows the cover on screen.
   const trackArt = imageUrl(player.state?.item?.album?.images, 64)

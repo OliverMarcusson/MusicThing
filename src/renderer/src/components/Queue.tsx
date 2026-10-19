@@ -61,14 +61,20 @@ function useConnectQueue(
 type Row = { track: Track; uid?: string; key: string }
 
 // Pairs each Web API track with its Connect uid, walking both lists in order. Tracks that don't
-// line up (relinked or just changed) get no uid and stay read-only.
+// line up (relinked or just changed) get no uid and stay read-only. With repeat on, Spotify lists
+// the same entries again under the same uids; only the first of each is editable, the repeats
+// follow from it.
 function align(tracks: Track[], items: ConnectItem[] | null): Row[] {
   let from = 0
+  const seen = new Set<string>()
   return tracks.map((track, i) => {
     const k = items?.findIndex((x, n) => n >= from && x.uri === track.uri) ?? -1
     if (k < 0) return { track, key: `${track.uri}-${i}` }
     from = k + 1
-    return { track, uid: items![k].uid, key: items![k].uid }
+    const uid = items![k].uid
+    if (seen.has(uid)) return { track, key: `${uid}-${i}` }
+    seen.add(uid)
+    return { track, uid, key: uid }
   })
 }
 

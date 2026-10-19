@@ -121,7 +121,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
           <div className="flex min-w-0 flex-1 flex-col">
             {/* Custom title bar: a drag strip in the app's colours. Windows draws its own
                 min/max/close buttons over the right end (titleBarOverlay), keeping Snap Layouts. */}
-            <div className="flex h-9 shrink-0 items-center px-1.5 [-webkit-app-region:drag]">
+            <div className="flex h-9 shrink-0 items-start px-1.5 pt-2 [-webkit-app-region:drag]">
               <Button
                 variant="ghost"
                 size="icon-sm"

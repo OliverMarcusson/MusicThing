@@ -27,51 +27,54 @@ type QueueRef = { index: number; uid: string }
 type ConnectItem = QueueRef & { uri: string }
 type Problem = { kind: 'signin' | 'failed'; message: string }
 
+type Loaded = { tracks: Track[]; items: ConnectItem[] | null; problem: Problem | null }
+
 /**
- * The same queue from Spotify Connect: it has the uids that reordering and skipping need, which
- * the Web API's queue lacks. Null until loaded, or when Connect isn't available.
+ * The Web API's queue (track details) and Connect's (the uids that reordering and skipping need),
+ * fetched together and applied in one update: applied apart, a drop briefly showed one list's
+ * old order against the other's new one. `items` is null when Connect isn't available.
  */
-function useConnectQueue(
-  player: Player,
-  enabled: boolean,
-  attempt: number
-): [ConnectItem[] | null, Problem | null] {
-  const [items, setItems] = useState<ConnectItem[] | null>(null)
-  const [problem, setProblem] = useState<Problem | null>(null)
+function useBothQueues(player: Player, enabled: boolean, attempt: number): Loaded | null {
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
   const currentId = player.state?.item?.id
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    window.api.connectQueue().then((res) => {
+    Promise.all([
+      api<{ queue: Track[] }>('/me/player/queue').catch(() => null),
+      window.api.connectQueue()
+    ]).then(([web, res]) => {
       if (cancelled) return
-      if ('ok' in res) {
-        setItems(res.ok)
-        setProblem(null)
-      } else {
-        setItems(null)
-        setProblem({ kind: res.error, message: res.message })
-      }
+      setLoaded({
+        tracks: web?.queue ?? [],
+        items: 'ok' in res ? res.ok : null,
+        problem: 'ok' in res ? null : { kind: res.error, message: res.message }
+      })
     })
     return () => {
       cancelled = true
     }
   }, [enabled, currentId, player.queueVersion, attempt])
-  return [items, problem]
+  return loaded
 }
 
 type Row = { track: Track; ref?: QueueRef; key: string }
 
 // Pairs each Web API track with its Connect entry, walking both lists in order. Tracks that don't
-// line up (relinked or just changed) get no entry and stay read-only. With repeat on, Spotify lists
-// the same entries again under the same uids, so keys add the position to stay unique.
+// line up (relinked or just changed) get no entry and stay read-only. Keys follow the uid, so a
+// moved row keeps its key and slides instead of remounting; with repeat on, Spotify lists the
+// same uids again, so later copies add which repeat they are.
 function align(tracks: Track[], items: ConnectItem[] | null): Row[] {
   let from = 0
+  const seen = new Map<string, number>()
   return tracks.map((track, i) => {
     const k = items?.findIndex((x, n) => n >= from && x.uri === track.uri) ?? -1
     if (k < 0) return { track, key: `${track.uri}-${i}` }
     from = k + 1
     const { index, uid } = items![k]
-    return { track, ref: { index, uid }, key: `${uid}-${index}` }
+    const n = seen.get(uid) ?? 0
+    seen.set(uid, n + 1)
+    return { track, ref: { index, uid }, key: n ? `${uid}-${n}` : uid }
   })
 }
 
@@ -83,14 +86,14 @@ function align(tracks: Track[], items: ConnectItem[] | null): Row[] {
 export function Queue({ player }: { player: Player }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const tracks = useQueue(player, open)
-  const [items, connectProblem] = useConnectQueue(player, open, attempt)
+  const loaded = useBothQueues(player, open, attempt)
+  const tracks = loaded?.tracks ?? null
   const [actionProblem, setActionProblem] = useState<Problem | null>(null)
-  const problem = actionProblem ?? connectProblem
+  const problem = actionProblem ?? loaded?.problem ?? null
   const drawer = useRef<HTMLDivElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
 
-  const aligned = useMemo(() => align(tracks ?? [], items), [tracks, items])
+  const aligned = useMemo(() => align(loaded?.tracks ?? [], loaded?.items ?? null), [loaded])
   // A drag's order is shown until the refetched queue (a new `aligned`) replaces it.
   const [dragged, setDragged] = useState<{ base: Row[]; rows: Row[] } | null>(null)
   const rows = dragged?.base === aligned ? dragged.rows : aligned

@@ -20,6 +20,7 @@ import {
   type Track
 } from '@/lib/spotify'
 import { clock } from '@/lib/utils'
+import { QueueAdd } from '@/components/TrackList'
 import type { View } from '@/App'
 
 type Results = {
@@ -187,6 +188,7 @@ export function Search({
               <CommandItem
                 key={t.uri}
                 value={t.uri}
+                className="group"
                 onSelect={() => {
                   // Play inside the album so playback carries on after this track.
                   player.play(
@@ -200,7 +202,9 @@ export function Search({
               >
                 <Thumb images={t.album?.images} />
                 <Text title={t.name} subtitle={t.artists.map((a) => a.name).join(', ')} />
-                <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                <span className="ml-auto" />
+                <QueueAdd uri={t.uri} player={player} />
+                <span className="text-xs tabular-nums text-muted-foreground">
                   {clock(t.duration_ms)}
                 </span>
               </CommandItem>

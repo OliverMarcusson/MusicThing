@@ -218,9 +218,11 @@ export function TrackList<T>({
 }
 
 /** Appears on row hover; the icon confirms the add (or failure) for a moment. */
-function QueueAdd({ uri, player }: { uri: string; player: Player }): React.JSX.Element {
+export function QueueAdd({ uri, player }: { uri: string; player: Player }): React.JSX.Element {
   const [status, setStatus] = useState<'idle' | 'added' | 'failed'>('idle')
-  const add = async (): Promise<void> => {
+  const add = async (e: React.MouseEvent): Promise<void> => {
+    // Inside a search result the row itself plays on click; queueing must not also play.
+    e.stopPropagation()
     try {
       await player.addToQueue(uri)
       setStatus('added')
@@ -237,7 +239,7 @@ function QueueAdd({ uri, player }: { uri: string; player: Player }): React.JSX.E
       title="Add to queue"
       onClick={add}
       className={cn(
-        'relative z-10 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+        'relative z-10 text-muted-foreground opacity-0 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100',
         status !== 'idle' && 'opacity-100'
       )}
     >

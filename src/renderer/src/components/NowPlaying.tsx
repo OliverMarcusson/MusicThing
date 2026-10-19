@@ -165,7 +165,7 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
           {state?.repeat_state === 'track' ? <Repeat1 /> : <Repeat />}
         </Button>
       </div>
-      <div className="flex w-full items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
+      <div className="flex h-4 w-full items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
         <span className="w-9 text-right">{clock(position)}</span>
         <Slider
           aria-label="Seek"
@@ -199,7 +199,13 @@ export function Extras({
 
   return (
     <div
-      className={cn('flex h-9 min-w-0 items-center justify-end gap-2 text-muted-foreground', className)}
+      className={
+        // Level with the seek bar: the same 16px row at the bottom of the controls block.
+        cn(
+          'flex h-4 min-w-0 items-center justify-end gap-2 self-end text-muted-foreground',
+          className
+        )
+      }
     >
       <Queue player={player} />
       <Volume2 className="ml-2 size-4 shrink-0" />

@@ -1,0 +1,217 @@
+<!doctype html>
+<!-- Landing page for https://musicthing.marcusson.dev/, uploaded by scripts/release.mjs.
+     The download link, version and size come from latest.yml, so releases need no edit here. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MusicThing: a quiet window for Spotify</title>
+  <meta name="description" content="A small Windows player that runs Spotify in the background and shows only your library, the queue and the controls.">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='none' stroke='%239a9aa0' stroke-linecap='round'%3E%3Cpath d='M38 78Q122 40 218 94' stroke-width='26'/%3E%3Cpath d='M52 128Q120 98 198 142' stroke-width='23'/%3E%3Cpath d='M66 176Q118 154 178 188' stroke-width='20'/%3E%3C/svg%3E">
+  <style>
+    /* Same idea as the app: --art is the centre cover's colour, and the accent and background
+       wash are derived from it with fixed lightness, so every cover stays readable. */
+    @property --art { syntax: '<color>'; inherits: true; initial-value: rgb(120 120 128); }
+
+    :root {
+      --bg: oklch(0.16 0.004 270);
+      --fg: oklch(0.95 0.003 270);
+      --muted: oklch(0.7 0.008 270);
+      --line: oklch(0.3 0.006 270);
+      --logo: #e6e6e9;
+      --accent: oklch(from var(--art) 0.74 clamp(0, c, 0.17) h);
+      --on-accent: oklch(0.18 0.01 270);
+      --wash: oklch(from var(--art) 0.5 clamp(0, c, 0.14) h / 0.22);
+      transition: --art 0.8s ease;
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #fff;
+        --fg: oklch(0.2 0.01 270);
+        --muted: oklch(0.45 0.01 270);
+        --line: oklch(0.9 0.005 270);
+        --logo: #6c6c72;
+        --accent: oklch(from var(--art) 0.52 clamp(0, c, 0.17) h);
+        --on-accent: #fff;
+        --wash: oklch(from var(--art) 0.7 clamp(0, c, 0.14) h / 0.18);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: inherit; }
+
+    header, main, footer { width: min(1080px, 100% - 48px); margin-inline: auto; }
+    header { display: flex; align-items: center; gap: 10px; padding-block: 28px; font-weight: 600; }
+    header svg { width: 28px; height: 28px; color: var(--logo); }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+      align-items: center;
+      gap: 48px;
+      padding-block: 24px 64px;
+    }
+    h1 {
+      font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      font-weight: 600;
+      text-wrap: balance;
+      margin: 0 0 20px;
+    }
+    .lede { font-size: 1.125rem; line-height: 1.55; color: var(--muted); margin: 0 0 32px; max-width: 34ch; }
+
+    .download {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 14px 22px; border-radius: 8px;
+      background: var(--accent); color: var(--on-accent);
+      font-weight: 600; text-decoration: none;
+      transition: background-color 0.8s ease, transform 0.1s ease;
+    }
+    .download:active { transform: translateY(1px); }
+    .download:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .download svg { width: 18px; height: 18px; }
+    .meta { margin: 12px 0 0; font-size: 0.875rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    dl { margin: 40px 0 0; border-top: 1px solid var(--line); max-width: 44ch; }
+    dl div { display: grid; grid-template-columns: 7rem 1fr; gap: 16px; padding-block: 14px; border-bottom: 1px solid var(--line); }
+    dt { font-weight: 600; font-size: 0.9375rem; }
+    dd { margin: 0; color: var(--muted); font-size: 0.9375rem; line-height: 1.5; }
+
+    /* Cover Flow, with the app's geometry: neighbours at 62% of a cover width, angled 60deg. */
+    .flow {
+      position: relative; aspect-ratio: 1.35; perspective: 1100px;
+      background: radial-gradient(closest-side, var(--wash), transparent);
+    }
+    .cover {
+      position: absolute; left: 50%; top: 42%; width: 46%; aspect-ratio: 1;
+      margin: -23% 0 0 -23%; border: 0; padding: 0; border-radius: 4px; cursor: pointer;
+      background: var(--a);
+      -webkit-box-reflect: below 2px linear-gradient(transparent 70%, rgb(0 0 0 / 0.22));
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.6s ease;
+      box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+    }
+    .cover:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+
+    footer {
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+      padding-block: 24px 32px; border-top: 1px solid var(--line);
+      font-size: 0.8125rem; color: var(--muted);
+    }
+
+    @media (max-width: 820px) {
+      main { grid-template-columns: 1fr; gap: 24px; }
+      .flow { order: -1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :root, .download, .cover { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true">
+      <path d="M38 78Q122 40 218 94" stroke-width="26"/>
+      <path d="M52 128Q120 98 198 142" stroke-width="23"/>
+      <path d="M66 176Q118 154 178 188" stroke-width="20"/>
+    </svg>
+    MusicThing
+  </header>
+
+  <main>
+    <section>
+      <h1>Spotify, with everything else turned off.</h1>
+      <p class="lede">
+        A small Windows player for your Spotify library. The Spotify app keeps playing in the
+        background; MusicThing shows your playlists, the queue and the controls, and nothing more.
+      </p>
+      <a class="download" id="download" href="latest.yml">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg>
+        Download for Windows
+      </a>
+      <p class="meta" id="meta">Windows 10 and 11</p>
+
+      <dl>
+        <div><dt>You need</dt><dd>The Spotify app for Windows and a Premium account.</dd></div>
+        <div><dt>Playback</dt><dd>Runs through Spotify itself, so sound quality and downloads stay as they are.</dd></div>
+        <div><dt>Updates</dt><dd>New versions download on their own and install when you quit.</dd></div>
+        <div><dt>First run</dt><dd>The installer isn't signed, so Windows may warn about it. Choose More info, then Run anyway.</dd></div>
+      </dl>
+    </section>
+
+    <div class="flow" id="flow" aria-label="Cover Flow preview"></div>
+  </main>
+
+  <footer>
+    <span>Made by Oliver Marcusson.</span>
+    <span>Not affiliated with Spotify.</span>
+  </footer>
+
+  <script>
+    // Latest installer from the update feed the app itself polls.
+    fetch('latest.yml', { cache: 'no-store' })
+      .then((r) => r.text())
+      .then((yml) => {
+        const field = (k) => yml.match(new RegExp(`^${k}: *'?([^'\\n]+)`, 'm'))?.[1]
+        const path = field('path')
+        if (!path) return
+        document.getElementById('download').href = path
+        const mb = Math.round(Number(yml.match(/^ +size: (\d+)/m)?.[1]) / 1e6)
+        document.getElementById('meta').textContent =
+          `Version ${field('version')}${mb ? ` · ${mb} MB` : ''} · Windows 10 and 11`
+      })
+      .catch(() => {})
+
+    // Five made-up covers; the centre one tints the page like the app does.
+    const COVERS = [
+      ['#e4572e', 'radial-gradient(circle at 70% 30%, #ffd166 0 22%, transparent 23%), linear-gradient(160deg, #e4572e, #8c1c13)'],
+      ['#2a9d8f', 'repeating-linear-gradient(115deg, #264653 0 18px, #2a9d8f 18px 36px)'],
+      ['#7b61ff', 'radial-gradient(circle at 30% 70%, #f4f1ff 0 12%, transparent 13%), conic-gradient(from 200deg at 60% 40%, #2d1e8f, #7b61ff, #2d1e8f)'],
+      ['#f4a259', 'linear-gradient(#f4a259 0 50%, #3d2b1f 50%), #3d2b1f'],
+      ['#4cc9f0', 'radial-gradient(circle at 50% 120%, #4cc9f0 0 45%, #0b2545 46%)']
+    ]
+    const flow = document.getElementById('flow')
+    const covers = COVERS.map(([, bg], i) => {
+      const b = document.createElement('button')
+      b.className = 'cover'
+      b.style.setProperty('--a', bg)
+      b.setAttribute('aria-label', `Cover ${i + 1}`)
+      b.onclick = () => go(i)
+      flow.append(b)
+      return b
+    })
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+    let current = 0
+    function go(i) {
+      current = (i + COVERS.length) % COVERS.length
+      covers.forEach((el, j) => {
+        // Offset from the centre, wrapped to -2..2 so the row loops.
+        const at = ((j - current + COVERS.length + 2) % COVERS.length) - 2
+        const x = clamp(at, -1, 1) * 62 + (at - clamp(at, -1, 1)) * 24
+        el.style.transform =
+          `translateX(${x}%) rotateY(${-clamp(at, -1, 1) * 60}deg) scale(${1 - 0.16 * Math.min(Math.abs(at), 1)})`
+        el.style.opacity = clamp((2 - Math.abs(at)) * 2, 0, 1)
+        el.style.zIndex = 10 - Math.abs(at)
+        el.tabIndex = Math.abs(at) > 1 ? -1 : 0
+      })
+      document.documentElement.style.setProperty('--art', COVERS[current][0])
+    }
+    go(0)
+
+    // Steps on its own unless the visitor prefers less motion or is pointing at it.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      let paused = false
+      flow.onmouseenter = () => (paused = true)
+      flow.onmouseleave = () => (paused = false)
+      setInterval(() => !paused && !document.hidden && go(current + 1), 2800)
+    }
+  </script>
+</body>
+</html>

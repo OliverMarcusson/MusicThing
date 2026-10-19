@@ -14,6 +14,6 @@ const run = (cmd, args) =>
 
 // Installer and blockmap first, latest.yml last, so clients never see a manifest for a missing file.
 const installer = `dist/${name}-${version}-setup.exe`
-run('scp', [installer, `${installer}.blockmap`, `${HOST}:${DIR}`])
+run('scp', [installer, `${installer}.blockmap`, 'site/index.html', `${HOST}:${DIR}`])
 run('scp', ['dist/latest.yml', `${HOST}:${DIR}`])
 console.log(`Released ${version}`)

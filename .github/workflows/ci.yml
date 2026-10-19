@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  # Builds all platforms and keeps them as run artifacts, without a release.
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        if: github.ref_type == 'tag'
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - uses: oven-sh/setup-bun@v2
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      # The patched librespot build takes minutes; reuse it until scripts/librespot.mjs changes.
+      - uses: actions/cache@v4
+        with:
+          path: resources/librespot
+          key: librespot-${{ runner.os }}-${{ hashFiles('scripts/librespot.mjs') }}
+      - run: bun install --frozen-lockfile
+      - run: bun run build:${{ matrix.platform }} --publish never
+        env:
+          MAIN_VITE_SPOTIFY_CLIENT_ID: ${{ secrets.MAIN_VITE_SPOTIFY_CLIENT_ID }}
+          # ponytail: unsigned builds; add signing certs here when Gatekeeper/SmartScreen warnings matter.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: musicthing-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+      - if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.blockmap
+            dist/latest*.yml

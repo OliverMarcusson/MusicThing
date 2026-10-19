@@ -39,3 +39,12 @@ Installed copies check `https://musicthing.marcusson.dev/latest.yml` at start-up
 1. Bump `version` in `package.json`.
 2. `bun run release` (needs SSH to the homelab as root; uploads to
    `/srv/compose/edge/sites/musicthing/`, served by the edge Caddy).
+
+### CI
+
+`.github/workflows/ci.yml` typechecks every push and PR. Pushing a `v*` tag that matches
+`package.json` (`git tag v1.0.8 && git push origin v1.0.8`) also builds Windows (NSIS), macOS
+(arm64 dmg/zip) and Linux (AppImage/deb) and attaches them to a GitHub Release. It needs the
+`MAIN_VITE_SPOTIFY_CLIENT_ID` repo secret. Builds are unsigned: macOS users have to run
+`xattr -cr /Applications/MusicThing.app` once, and Windows shows SmartScreen. The homelab
+update feed still only gets what `bun run release` uploads.

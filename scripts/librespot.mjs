@@ -66,9 +66,10 @@ execFileSync(
 )
 // A running player locks its exe against overwriting but not renaming, so move it aside first;
 // MusicThing picks up the new one the next time it starts the player.
-const BIN = 'resources/librespot/bin/librespot.exe'
+const EXE = process.platform === 'win32' ? 'librespot.exe' : 'librespot'
+const BIN = `resources/librespot/bin/${EXE}`
 mkdirSync('resources/librespot/bin', { recursive: true })
 rmSync(`${BIN}.old`, { force: true })
 if (existsSync(BIN)) renameSync(BIN, `${BIN}.old`)
-copyFileSync(`${CACHE}/librespot/bin/librespot.exe`, BIN)
+copyFileSync(`${CACHE}/librespot/bin/${EXE}`, BIN)
 writeFileSync(MARKER, '')

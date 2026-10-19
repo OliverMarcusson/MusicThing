@@ -1,7 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import { join } from 'path'
-import asset from '../../resources/librespot/bin/librespot.exe?asset'
 
 /**
  * The player: librespot, an open-source reimplementation of the official client's protocol,
@@ -21,7 +20,11 @@ const OAUTH_PORT = '5588'
 const RESTART_MS = 5000
 
 // Executables can't run from inside the asar; electron-builder unpacks resources/ next to it.
-const bin = asset.replace('app.asar', 'app.asar.unpacked')
+const bin = join(
+  app.getAppPath(),
+  'resources/librespot/bin',
+  process.platform === 'win32' ? 'librespot.exe' : 'librespot'
+).replace('app.asar', 'app.asar.unpacked')
 
 let child: ChildProcess | null = null
 let stopping = false

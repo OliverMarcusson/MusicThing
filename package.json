@@ -20,7 +20,9 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "release": "bun run build:win && node scripts/release.mjs"
+    "build:linux:docker": "node scripts/build-linux.mjs",
+    "release": "node scripts/release.mjs",
+    "release:local": "bun run build:win && node scripts/build-linux.mjs && node scripts/release.mjs --local"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

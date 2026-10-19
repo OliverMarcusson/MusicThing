@@ -6,7 +6,7 @@ import { SignedOut, webAuth } from './webplayer'
  * can only append to the queue. Commands need a sending device, so a hidden one that never plays
  * is registered on a dealer socket. Auth is the signed-in web player's (see webplayer.ts).
  *
- * Against Spotify's developer terms, and can break whenever Spotify changes the protocol.
+ * Can break whenever Spotify changes the protocol.
  */
 
 // ponytail: one fixed region; resolve hosts through apresolve.spotify.com if this one stops answering.

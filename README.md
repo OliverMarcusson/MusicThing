@@ -5,13 +5,13 @@ A minimalist desktop Spotify client: Electron, React, shadcn/ui, Tailwind 4 and 
 It plays the audio itself through a bundled [librespot](https://github.com/librespot-org/librespot),
 an open-source reimplementation of the official client's protocol, which shows up as a Spotify
 Connect device named MusicThing. The official Spotify app isn't needed. Requires Spotify Premium.
-(Against Spotify's terms; can break when Spotify changes the protocol.)
+(Can break when Spotify changes the protocol.)
 
 - Library sidebar (playlists, albums, Liked Songs) that expands on hover
 - iPod-style Cover Flow for Now playing, swipeable
 - Ctrl+K search, queue drawer, accent colour from album art
 - Playlists the Web API refuses are read through a hidden copy of Spotify's web player
-  (against Spotify's developer terms; can break when the web player changes)
+  (can break when the web player changes)
 
 ## Setup
 

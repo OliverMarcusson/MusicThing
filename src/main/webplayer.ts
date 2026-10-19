@@ -13,7 +13,7 @@ import { BrowserWindow, session } from 'electron'
  * That sign-in is the app's only Spotify login: its token also drives the Web API (`getToken`)
  * and signs librespot in once (librespot.ts).
  *
- * Against Spotify's developer terms, and can break whenever the web player changes.
+ * Can break whenever the web player changes.
  */
 
 const PARTITION = 'persist:webplayer'

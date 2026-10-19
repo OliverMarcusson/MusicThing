@@ -13,7 +13,7 @@ import { getToken } from './webplayer'
  * reusable credentials Spotify hands back are cached in userData/librespot. Should Spotify refuse
  * that token, it falls back to librespot's own browser sign-in.
  *
- * Against Spotify's terms, and can break whenever Spotify changes the protocol.
+ * Can break whenever Spotify changes the protocol.
  */
 
 // The Connect device name; player.ts targets the device by it.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, ApiError, Unauthorized, type PlaybackState, type Track } from './spotify'
 
 // ponytail: polls /me/player; the Web API has no push channel for playback state.
@@ -9,6 +9,8 @@ const SKIP_POLL_MS = 250
 // How long after pressing "previous" a track change still counts as going back.
 const BACK_WINDOW_MS = 5000
 const HISTORY = 50
+// How close to its end a track must be for a stop to count as the playlist running out.
+const END_MARGIN_MS = 4000
 
 export type Player = ReturnType<typeof usePlayer>
 
@@ -23,6 +25,13 @@ export function usePlayer() {
   // Which skip button was pressed last. Track ids alone can't tell next from previous when a
   // playlist repeats (A → B → A looks like "back" either way), so views read this instead.
   const lastSkip = useRef<{ dir: 'next' | 'previous'; at: number } | null>(null)
+  // What's on screen, for sync (a stable callback) to compare the next poll against.
+  const shown = useRef({ state, syncedAt })
+  useLayoutEffect(() => {
+    shown.current = { state, syncedAt }
+  })
+  // The track a finished playlist stopped on; hidden until playback starts again.
+  const ended = useRef<string | null>(null)
 
   // Tracks played this session, derived during render so Cover Flow moves the old centre cover
   // left in the same frame the new one arrives (an effect would leave a one-frame gap).
@@ -57,7 +66,24 @@ export function usePlayer() {
       const next = await api<PlaybackState>('/me/player')
       // Drop polls that started before, or too soon after, the latest command.
       if (startedAt < lastCommand.current + SETTLE_MS) return
-      setState(next)
+      // A playlist that runs out without repeat stops on its first track, paused at 0:00, which
+      // Spotify reports just like a paused track. Catch the moment it happens (playing the end of
+      // one track, then paused at the start of another) and show nothing playing until it plays.
+      const prev = shown.current
+      const item = next?.item
+      if (
+        prev.state?.is_playing &&
+        prev.state.repeat_state === 'off' &&
+        item &&
+        !next.is_playing &&
+        (next.progress_ms ?? 0) < 1000 &&
+        item.id !== prev.state.item?.id &&
+        progressAt(prev.state, prev.syncedAt, startedAt) >=
+          (prev.state.item?.duration_ms ?? Infinity) - END_MARGIN_MS
+      )
+        ended.current = item.id
+      if (ended.current && (next?.is_playing || item?.id !== ended.current)) ended.current = null
+      setState(ended.current ? null : next)
       setSyncedAt(startedAt)
       setError(null)
     } catch (err) {

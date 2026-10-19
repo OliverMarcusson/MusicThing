@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { Heart, Search as SearchIcon } from 'lucide-react'
+import { ArrowDownToLine, Heart, Search as SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
@@ -82,6 +82,10 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
         e.preventDefault()
         setSearchOpen((o) => !o)
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u') {
+        e.preventDefault()
+        window.api.checkForUpdates()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -110,7 +114,8 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
     // Honour the OS reduced-motion setting for every animation below.
     <MotionConfig reducedMotion="user">
       <div className="flex h-screen flex-col">
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
+          <UpdateButton />
           {/* The rail runs to the top edge; only the content column carries the title bar. */}
           <Sidebar view={view} onSelect={setView} />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -218,6 +223,42 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
         />
       </div>
     </MotionConfig>
+  )
+}
+
+type UpdateStatus = Awaited<ReturnType<Window['api']['updateStatus']>>
+
+/** Slides up in the bottom-left corner, above the player bar, once a newer version is found. */
+function UpdateButton(): React.JSX.Element {
+  const [status, setStatus] = useState<UpdateStatus>('none')
+  useEffect(() => {
+    window.api.updateStatus().then(setStatus)
+    return window.api.onUpdateStatus(setStatus)
+  }, [])
+  return (
+    <AnimatePresence>
+      {status !== 'none' && (
+        <motion.div
+          className="absolute bottom-3 left-3 z-30"
+          initial={{ y: 24, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 24, opacity: 0 }}
+          transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            className="shadow-lg shadow-black/40"
+            // Clickable once downloaded; until then it says what's happening.
+            disabled={status !== 'ready'}
+            onClick={() => window.api.installUpdate()}
+          >
+            <ArrowDownToLine />
+            {status === 'ready' ? 'Restart to update' : 'Downloading update…'}
+          </Button>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

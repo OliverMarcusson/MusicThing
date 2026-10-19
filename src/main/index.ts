@@ -14,13 +14,14 @@ import {
   skipTo as connectSkipTo,
   type QueueRef
 } from './connect'
+import type { UpdateStatus } from '../preload'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
-// Set once an update has downloaded; it installs on the next quit, or now via the tray.
-let updateReady = false
-const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000
+// A downloaded update installs on the next quit, or now via the tray or the window's button.
+let update: UpdateStatus = 'none'
+const UPDATE_CHECK_MS = 5 * 60 * 1000
 
 // Off-white lines on a dark taskbar, grey on a light one.
 const icon = (): string => (nativeTheme.shouldUseDarkColors ? iconDark : iconLight)
@@ -85,7 +86,7 @@ function createTray(): void {
       Menu.buildFromTemplate([
         { label: 'Open', click: showWindow },
         { type: 'separator' },
-        ...(updateReady
+        ...(update === 'ready'
           ? [{ label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }]
           : []),
         { label: 'Quit', click: () => app.quit() }
@@ -115,6 +116,9 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
   ipcMain.handle('connect:skipBy', (_, n: number, uri: string) => connectSkipBy(n, uri))
+  ipcMain.handle('update:status', () => update)
+  ipcMain.handle('update:check', () => checkNow())
+  ipcMain.handle('update:install', () => update === 'ready' && autoUpdater.quitAndInstall())
 
   createWindow()
   createTray()
@@ -123,14 +127,24 @@ app.whenReady().then(() => {
 })
 
 // Installed builds poll the homelab feed (electron-builder.yml `publish`) and download in the
-// background; a dev run has no feed to compare against.
+// background; a dev run has no feed to compare against. Ctrl+U in the window checks right away.
 function checkForUpdates(): void {
   if (!app.isPackaged) return
-  autoUpdater.on('update-downloaded', () => (updateReady = true))
-  // Offline or feed down: try again next round.
-  const check = (): void => void autoUpdater.checkForUpdates().catch(() => {})
-  check()
-  setInterval(check, UPDATE_CHECK_MS)
+  const set = (status: UpdateStatus): void => {
+    update = status
+    mainWindow?.webContents.send('update:status', status)
+  }
+  autoUpdater.on('update-available', () => set('downloading'))
+  autoUpdater.on('update-downloaded', () => set('ready'))
+  // A failed download is offered again by the next check.
+  autoUpdater.on('error', () => update === 'downloading' && set('none'))
+  checkNow()
+  setInterval(checkNow, UPDATE_CHECK_MS)
+}
+
+// Offline or feed down: try again next round. Once one is downloaded there's nothing to look for.
+function checkNow(): void {
+  if (app.isPackaged && update === 'none') autoUpdater.checkForUpdates().catch(() => {})
 }
 
 app.on('before-quit', () => {

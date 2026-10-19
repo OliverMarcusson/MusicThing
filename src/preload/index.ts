@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { WebPage } from '../main/webplayer'
 import type { ConnectResult, QueueRef } from '../main/connect'
 
+export type UpdateStatus = 'none' | 'downloading' | 'ready'
+
 const api = {
   token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
   login: (): Promise<string> => ipcRenderer.invoke('auth:login'),
@@ -18,7 +20,16 @@ const api = {
   connectSkipTo: (uid: string): Promise<ConnectResult<true>> =>
     ipcRenderer.invoke('connect:skipTo', uid),
   connectSkipBy: (n: number, uri: string): Promise<ConnectResult<true>> =>
-    ipcRenderer.invoke('connect:skipBy', n, uri)
+    ipcRenderer.invoke('connect:skipBy', n, uri),
+  updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+  /** Calls back whenever the update status changes; returns the unsubscribe. */
+  onUpdateStatus: (cb: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_: unknown, status: UpdateStatus): void => cb(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
+  },
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('update:check'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install')
 }
 
 export type Api = typeof api

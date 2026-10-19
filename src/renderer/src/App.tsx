@@ -178,6 +178,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
                         pick: (i) => i.item ?? i.track ?? null,
                         contextUri: view.playlist.uri
                       }}
+                      playlist={view.playlist}
                       showAlbum
                       player={player}
                       onPlayed={() => setView({ kind: 'now' })}

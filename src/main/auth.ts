@@ -13,7 +13,9 @@ const SCOPES = [
   'user-read-currently-playing',
   'user-library-read',
   'playlist-read-private',
-  'playlist-read-collaborative'
+  'playlist-read-collaborative',
+  'playlist-modify-public',
+  'playlist-modify-private'
 ].join(' ')
 
 const tokenFile = (): string => join(app.getPath('userData'), 'refresh-token')

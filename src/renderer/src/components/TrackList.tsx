@@ -1,9 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { AudioLines, Check, ListPlus, Music, Play, Shuffle, X } from 'lucide-react'
+import { AudioLines, Check, ListPlus, Music, Play, Plus, Shuffle, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Player } from '@/lib/player'
-import { ApiError, imageUrl, type Image, type Track } from '@/lib/spotify'
+import {
+  api,
+  ApiError,
+  fetchAll,
+  imageUrl,
+  myId,
+  type Image,
+  type Playlist,
+  type Track
+} from '@/lib/spotify'
 import { usePaged, WebPlayerHidden } from '@/lib/use-paged'
 import { clock, cn } from '@/lib/utils'
 
@@ -23,6 +40,7 @@ export function TrackList<T>({
   subtitle,
   images,
   source,
+  playlist,
   showAlbum,
   placeholder,
   onPlayed,
@@ -32,6 +50,8 @@ export function TrackList<T>({
   subtitle?: string
   images: Image[] | null | undefined
   source: TrackSource<T>
+  /** The playlist being shown; its tracks get a remove button when you can edit it. */
+  playlist?: Playlist
   showAlbum: boolean
   /** Shown in the cover slot when there is no image. */
   placeholder?: React.ReactNode
@@ -48,7 +68,21 @@ export function TrackList<T>({
     web && playlistId ? `webplayer:${playlistId}:0:${attempt}` : source.path
   )
   if (!web && playlistId && error instanceof ApiError && error.status === 403) setWeb(true)
-  const tracks = items.map(source.pick).filter((t): t is Track => !!t?.id)
+  const [editable, setEditable] = useState(false)
+  useEffect(() => {
+    if (!playlist) return
+    let live = true
+    myId().then(
+      (id) => live && setEditable(playlist.collaborative || playlist.owner.id === id),
+      () => {}
+    )
+    return () => {
+      live = false
+    }
+  }, [playlist])
+  // Removed tracks hide right away instead of reloading the list.
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set())
+  const tracks = items.map(source.pick).filter((t): t is Track => !!t?.id && !removed.has(t.uri))
   const currentId = player.state?.item?.id
   const cover = imageUrl(images, 300)
 
@@ -78,9 +112,12 @@ export function TrackList<T>({
     await player.setShuffle(shuffle)
   }
 
-  const cols = showAlbum
-    ? 'grid-cols-[3ch_minmax(0,3fr)_minmax(0,2fr)_2rem_3.5rem]'
-    : 'grid-cols-[3ch_minmax(0,1fr)_2rem_3.5rem]'
+  const cols = cn(
+    showAlbum
+      ? 'grid-cols-[3ch_minmax(0,3fr)_minmax(0,2fr)_var(--actions)_5ch]'
+      : 'grid-cols-[3ch_minmax(0,1fr)_var(--actions)_5ch]',
+    editable ? '[--actions:6rem]' : '[--actions:4rem]'
+  )
 
   return (
     <div className="h-full overflow-y-auto">
@@ -171,7 +208,17 @@ export function TrackList<T>({
                 </span>
               </span>
               {showAlbum && <span className="truncate text-muted-foreground">{t.album?.name}</span>}
-              <QueueAdd uri={t.uri} player={player} />
+              <div className="flex">
+                {editable && playlist && (
+                  <PlaylistRemove
+                    playlistId={playlist.id}
+                    uri={t.uri}
+                    onRemoved={() => setRemoved((r) => new Set(r).add(t.uri))}
+                  />
+                )}
+                <PlaylistAdd uri={t.uri} />
+                <QueueAdd uri={t.uri} player={player} />
+              </div>
               <span className="text-right tabular-nums text-muted-foreground">
                 {clock(t.duration_ms)}
               </span>
@@ -238,11 +285,7 @@ export function QueueAdd({ uri, player }: { uri: string; player: Player }): Reac
       aria-label="Add to queue"
       title="Add to queue"
       onClick={add}
-      className={cn(
-        // A foreground tint, not ghost's accent, so the hover box shows on accent-coloured rows too.
-        'relative z-10 text-muted-foreground opacity-0 hover:bg-foreground/10 dark:hover:bg-foreground/10 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100',
-        status !== 'idle' && 'opacity-100'
-      )}
+      className={cn(rowAction, status !== 'idle' && 'opacity-100')}
     >
       {status === 'added' ? (
         <Check className="text-foreground" />
@@ -251,6 +294,159 @@ export function QueueAdd({ uri, player }: { uri: string; player: Player }): Reac
       ) : (
         <ListPlus />
       )}
+    </Button>
+  )
+}
+
+// A foreground tint, not ghost's accent, so the hover box shows on accent-coloured rows too.
+const rowAction =
+  'relative z-10 text-muted-foreground opacity-0 hover:bg-foreground/10 dark:hover:bg-foreground/10 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100'
+
+/** Row button that opens a filterable list of the playlists you can edit; picking one appends the track. */
+export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [playlists, setPlaylists] = useState<Playlist[] | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+  const [added, setAdded] = useState(false)
+
+  // Refetched on each open so new playlists show up; it's two small requests.
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    Promise.all([myId(), fetchAll<Playlist | null>('/me/playlists?limit=50')]).then(
+      ([me, all]) =>
+        live &&
+        setPlaylists(
+          all.filter((p): p is Playlist => !!p && (p.owner.id === me || p.collaborative))
+        ),
+      (e) => live && setError(e instanceof Error ? e : new Error(String(e)))
+    )
+    return () => {
+      live = false
+    }
+  }, [open])
+
+  const add = async (p: Playlist): Promise<void> => {
+    try {
+      await api(`/playlists/${p.id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uris: [uri] })
+      })
+      setOpen(false)
+      setAdded(true)
+      setTimeout(() => setAdded(false), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)))
+    }
+  }
+
+  // Sessions from before playlist editing existed lack the scope; Spotify answers 403.
+  const needsScope = error instanceof ApiError && error.status === 403
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) setError(null)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Add to playlist"
+          title="Add to playlist"
+          // Inside a search result the row plays on click; opening the list must not also play.
+          onClick={(e) => e.stopPropagation()}
+          className={cn(rowAction, (open || added) && 'opacity-100')}
+        >
+          {added ? <Check className="text-foreground" /> : <Plus />}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-64 p-0"
+        // React events bubble through the portal; keep them away from the row and the search palette.
+        onClick={(e) => e.stopPropagation()}
+        onPointerMove={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <Command>
+          <CommandInput placeholder="Add to playlist" />
+          <CommandList className="max-h-72">
+            {error ? (
+              <div className="space-y-3 p-3 text-sm">
+                <p className="text-destructive">
+                  {needsScope ? 'Sign in again to let MusicThing edit playlists.' : error.message}
+                </p>
+                {needsScope && (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      await window.api.logout()
+                      location.reload()
+                    }}
+                  >
+                    Sign in again
+                  </Button>
+                )}
+              </div>
+            ) : playlists ? (
+              <>
+                <CommandEmpty>No playlists.</CommandEmpty>
+                {playlists.map((p) => (
+                  <CommandItem key={p.id} value={p.id} keywords={[p.name]} onSelect={() => add(p)}>
+                    <span className="truncate">{p.name}</span>
+                  </CommandItem>
+                ))}
+              </>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** Removes every copy of the track from the playlist; a failure shows on the icon for a moment. */
+function PlaylistRemove({
+  playlistId,
+  uri,
+  onRemoved
+}: {
+  playlistId: string
+  uri: string
+  onRemoved: () => void
+}): React.JSX.Element {
+  const [failed, setFailed] = useState(false)
+  const remove = async (): Promise<void> => {
+    try {
+      // The Feb 2026 API renamed the body's `tracks` to `items`; send both like the reads accept both.
+      await api(`/playlists/${playlistId}/items`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ uri }], tracks: [{ uri }] })
+      })
+      onRemoved()
+    } catch {
+      setFailed(true)
+      setTimeout(() => setFailed(false), 1500)
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Remove from playlist"
+      title="Remove from playlist"
+      onClick={remove}
+      className={cn(rowAction, failed && 'opacity-100')}
+    >
+      {failed ? <X className="text-destructive" /> : <Trash2 />}
     </Button>
   )
 }

@@ -8,6 +8,7 @@ import {
   CommandItem,
   CommandList
 } from '@/components/ui/command'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Player } from '@/lib/player'
 import {
   api,
@@ -19,8 +20,8 @@ import {
   type Playlist,
   type Track
 } from '@/lib/spotify'
-import { clock } from '@/lib/utils'
-import { QueueAdd } from '@/components/TrackList'
+import { clock, cn } from '@/lib/utils'
+import { PlaylistAdd, QueueAdd } from '@/components/TrackList'
 import type { View } from '@/App'
 
 type Results = {
@@ -33,6 +34,21 @@ type Results = {
 const LIMIT = '10'
 const DEBOUNCE_MS = 250
 const LIBRARY_MAX = 8
+const SKELETON_WIDTHS = [
+  ['55%', '30%'],
+  ['40%', '25%'],
+  ['65%', '35%'],
+  ['45%', '20%'],
+  ['50%', '30%'],
+  ['35%', '25%']
+]
+
+/** Results fade in top-down once they arrive; the stagger is capped so long lists don't drag. */
+const fill = (i: number): { className: string; style: React.CSSProperties } => ({
+  className:
+    'animate-in fade-in slide-in-from-top-1 duration-300 fill-mode-backwards motion-reduce:animate-none',
+  style: { animationDelay: `${Math.min(i, 12) * 25}ms` }
+})
 
 type Library = { playlists: Playlist[]; albums: Album[] }
 type LibraryHit =
@@ -84,8 +100,12 @@ export function Search({
   const [query, setQuery] = useState('')
   // cmdk's onSelect carries no event, so remember whether Shift was down for the last Enter/click.
   const shift = useRef(false)
-  const [results, setResults] = useState<Results | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // The answer remembers its query, so a newer query shows the skeleton instead of stale results.
+  const [answer, setAnswer] = useState<{
+    q: string
+    results: Results | null
+    error: string | null
+  } | null>(null)
   const [library, setLibrary] = useState<Library | null>(null)
 
   // Refresh your playlists and albums each time the palette opens; it's one or two requests.
@@ -116,13 +136,11 @@ export function Search({
     const timer = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ q, type: 'track,album,playlist', limit: LIMIT })
-        const res = await api<Results>(`/search?${params}`)
-        if (!cancelled) {
-          setResults(res)
-          setError(null)
-        }
+        const results = await api<Results>(`/search?${params}`)
+        if (!cancelled) setAnswer({ q, results, error: null })
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setAnswer({ q, results: null, error: err instanceof Error ? err.message : String(err) })
       }
     }, DEBOUNCE_MS)
     return () => {
@@ -132,11 +150,14 @@ export function Search({
   }, [query])
 
   const done = (): void => onOpenChange(false)
-  const shown = query.trim() ? results : null
+  const q = query.trim()
+  const loading = !!q && answer?.q !== q
+  const shown = q && !loading ? answer?.results : null
+  const error = q && !loading ? answer?.error : null
   const tracks = shown?.tracks?.items ?? []
   const albums = shown?.albums?.items ?? []
   const playlists = (shown?.playlists?.items ?? []).filter((p): p is Playlist => !!p)
-  const libraryHits = matchLibrary(query.trim(), library)
+  const libraryHits = matchLibrary(q, library)
 
   return (
     <CommandDialog
@@ -180,15 +201,29 @@ export function Search({
             ))}
           </CommandGroup>
         )}
-        {shown && !error && <CommandEmpty>No results for “{query.trim()}”.</CommandEmpty>}
+        {loading && (
+          <div aria-label="Searching" role="status" className="p-1">
+            {SKELETON_WIDTHS.map(([title, artist], i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                <Skeleton className="size-10 shrink-0 rounded-sm" />
+                <span className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5" style={{ width: title }} />
+                  <Skeleton className="h-3 opacity-60" style={{ width: artist }} />
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {shown && !error && <CommandEmpty>No results for “{q}”.</CommandEmpty>}
 
         {tracks.length > 0 && (
           <CommandGroup heading="Tracks">
-            {tracks.map((t) => (
+            {tracks.map((t, i) => (
               <CommandItem
                 key={t.uri}
                 value={t.uri}
-                className="group"
+                className={cn('group', fill(i).className)}
+                style={fill(i).style}
                 onSelect={() => {
                   // Play inside the album so playback carries on after this track.
                   player.play(
@@ -203,6 +238,7 @@ export function Search({
                 <Thumb images={t.album?.images} />
                 <Text title={t.name} subtitle={t.artists.map((a) => a.name).join(', ')} />
                 <span className="ml-auto" />
+                <PlaylistAdd uri={t.uri} />
                 <QueueAdd uri={t.uri} player={player} />
                 <span className="text-xs tabular-nums text-muted-foreground">
                   {clock(t.duration_ms)}
@@ -214,10 +250,11 @@ export function Search({
 
         {albums.length > 0 && (
           <CommandGroup heading="Albums">
-            {albums.map((a) => (
+            {albums.map((a, i) => (
               <CommandItem
                 key={a.uri}
                 value={a.uri}
+                {...fill(tracks.length + i)}
                 onSelect={() => {
                   onNavigate({ kind: 'album', id: a.id, album: a })
                   done()
@@ -232,10 +269,11 @@ export function Search({
 
         {playlists.length > 0 && (
           <CommandGroup heading="Playlists">
-            {playlists.map((p) => (
+            {playlists.map((p, i) => (
               <CommandItem
                 key={p.uri}
                 value={p.uri}
+                {...fill(tracks.length + albums.length + i)}
                 onSelect={() => {
                   onNavigate({ kind: 'playlist', id: p.id, playlist: p })
                   done()

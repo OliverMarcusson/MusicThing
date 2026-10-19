@@ -57,7 +57,8 @@ export type Playlist = {
   name: string
   uri: string
   images: Image[] | null
-  owner: { display_name: string | null }
+  owner: { id: string; display_name: string | null }
+  collaborative: boolean
 }
 
 export type Paging<T> = { items: T[]; next: string | null; total: number }
@@ -69,6 +70,19 @@ export type PlaybackState = {
   repeat_state: 'off' | 'track' | 'context'
   item: Track | null
   device: { id: string | null; name: string; volume_percent: number | null }
+}
+
+let me: Promise<string | undefined> | null = null
+/** Your Spotify user id, fetched once; a failed request is retried next call. */
+export function myId(): Promise<string | undefined> {
+  me ??= api<{ id: string }>('/me').then(
+    (m) => m?.id,
+    (e) => {
+      me = null
+      throw e
+    }
+  )
+  return me
 }
 
 /** Follows `next` links until done, up to `max` items. For small lists like your playlists. */

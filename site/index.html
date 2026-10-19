@@ -71,7 +71,7 @@
       perspective: 1200px; touch-action: pan-y; cursor: grab; user-select: none;
       background:
         radial-gradient(50% 60% at 50% 42%, var(--glow), transparent 70%),
-        linear-gradient(transparent 69.2%, var(--floor) 69.2%, var(--bg) 100%);
+        linear-gradient(transparent 55%, var(--floor) 75%, var(--bg) 100%);
     }
     .stage.dragging { cursor: grabbing; }
     .cover {
@@ -84,12 +84,6 @@
       transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.55s ease;
     }
     .dragging .cover { transition: none; }
-    /* Each made-up album has its title set on the sleeve, like a real one. */
-    .cover span {
-      position: absolute; inset: auto 7% 7% 7%; text-align: left;
-      font-weight: 700; font-size: calc(var(--s) * 0.085); line-height: 0.95; letter-spacing: -0.03em;
-      color: var(--ink);
-    }
 
     .caption { text-align: center; margin-top: calc(var(--s) * -0.22); position: relative; padding-inline: 20px; }
     h1 { margin: 0; font-size: clamp(1.75rem, 3.6vw, 2.75rem); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
@@ -222,31 +216,29 @@
       })
       .catch(() => {})
 
-    // Made-up albums, one per feature: [colour, sleeve, ink, title, caption].
+    // Made-up albums, one per feature: [colour, sleeve, title, caption].
     const ALBUMS = [
-      ['#e4572e', 'radial-gradient(circle at 72% 30%, #ffd166 0 21%, transparent 22%), linear-gradient(165deg, #e4572e, #7a1a10)', '#fff3e0',
+      ['#e4572e', 'radial-gradient(circle at 72% 30%, #ffd166 0 21%, transparent 22%), linear-gradient(165deg, #e4572e, #7a1a10)',
         'Only what you need', 'Your playlists, albums and the queue. The rest of Spotify stays out of the way.'],
-      ['#2a9d8f', 'repeating-linear-gradient(115deg, #1d3d47 0 22px, #2a9d8f 22px 44px)', '#e9fffb',
+      ['#2a9d8f', 'repeating-linear-gradient(115deg, #1d3d47 0 22px, #2a9d8f 22px 44px)',
         'Cover Flow', 'Drag the covers to skip ahead or go back. Try it on these.'],
-      ['#7b61ff', 'radial-gradient(circle at 28% 34%, #f4f1ff 0 11%, transparent 12%), conic-gradient(from 200deg at 62% 40%, #24177a, #7b61ff, #24177a)', '#f4f1ff',
+      ['#7b61ff', 'radial-gradient(circle at 28% 34%, #f4f1ff 0 11%, transparent 12%), conic-gradient(from 200deg at 62% 40%, #24177a, #7b61ff, #24177a)',
         'Ctrl+K for anything', 'Search Spotify and your library from anywhere, then play it or queue it.'],
-      ['#f4a259', 'linear-gradient(#f4a259 0 54%, #3b2a1e 54%)', '#3b2a1e',
+      ['#f4a259', 'linear-gradient(#f4a259 0 54%, #3b2a1e 54%)',
         'Spotify does the playing', 'Sound quality, downloads and your devices work exactly as before.'],
-      ['#4cc9f0', 'radial-gradient(circle at 50% 118%, #4cc9f0 0 44%, #0b2545 45%)', '#e6f8ff',
+      ['#4cc9f0', 'radial-gradient(circle at 50% 118%, #4cc9f0 0 44%, #0b2545 45%)',
         'Lives in the tray', 'Close the window and keep listening. Media keys still work.'],
-      ['#e85d9c', 'linear-gradient(90deg, #e85d9c 0 33%, #ffb3d1 33% 66%, #6d1b44 66%)', '#2c0a1b',
+      ['#e85d9c', 'linear-gradient(90deg, #e85d9c 0 33%, #ffb3d1 33% 66%, #6d1b44 66%)',
         'Keeps itself current', 'New versions install the next time you quit.']
     ]
     const N = ALBUMS.length
     const STEP_MS = 4500
     const stage = document.getElementById('stage')
-    const covers = ALBUMS.map(([, sleeve, ink, title], i) => {
+    const covers = ALBUMS.map(([, sleeve, title], i) => {
       const b = document.createElement('button')
       b.className = 'cover'
       b.style.setProperty('--a', sleeve)
-      b.style.setProperty('--ink', ink)
       b.setAttribute('aria-label', title)
-      b.innerHTML = `<span>${title}</span>`
       b.onclick = () => !moved && go(Math.round(pos) + wrap(i - pos))
       stage.append(b)
       return b
@@ -268,8 +260,8 @@
         el.tabIndex = -1
       })
       const i = ((Math.round(pos) % N) + N) % N
-      document.getElementById('title').textContent = ALBUMS[i][3]
-      document.getElementById('line').textContent = ALBUMS[i][4]
+      document.getElementById('title').textContent = ALBUMS[i][2]
+      document.getElementById('line').textContent = ALBUMS[i][3]
       document.documentElement.style.setProperty('--art', ALBUMS[i][0])
     }
     function go(p) {

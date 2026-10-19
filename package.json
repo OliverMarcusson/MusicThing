@@ -1,6 +1,6 @@
 {
   "name": "musicthing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A minimalist Spotify remote with Cover Flow",
   "main": "./out/main/index.js",
   "author": "Oliver Marcusson <oliver@marcusson.dev>",
@@ -19,7 +19,7 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "release": "node scripts/release.mjs"
+    "release": "bun run build:win && node scripts/release.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

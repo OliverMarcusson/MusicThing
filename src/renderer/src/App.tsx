@@ -221,26 +221,31 @@ function NowView({ player }: { player: Player }): React.JSX.Element {
     <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden px-10">
       {track ? (
         <>
-          <CoverFlow player={player} />
-          {/* The title slides up on track change so the switch is legible. */}
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={track.id}
-              className="text-center"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <h1 className="text-2xl font-semibold">{track.name}</h1>
-              <p className="text-muted-foreground">{track.artists.map((a) => a.name).join(', ')}</p>
-            </motion.div>
-          </AnimatePresence>
-          {/* The player bar's controls, laid out like the bar minus the track it already titles. */}
-          <div className="relative mt-4 grid w-full grid-cols-[1fr_minmax(0,32rem)_1fr] items-center gap-6">
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2">
+            <CoverFlow player={player} />
+            {/* The title slides up on track change so the switch is legible. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={track.id}
+                className="text-center"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <h1 className="text-2xl font-semibold">{track.name}</h1>
+                <p className="text-muted-foreground">
+                  {track.artists.map((a) => a.name).join(', ')}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+          {/* The player bar's controls, in the bar's columns minus the track the page already
+              titles. Queue and volume line up with the play button, not the whole block. */}
+          <div className="relative grid w-full shrink-0 grid-cols-[1fr_minmax(0,32rem)_1fr] items-start gap-6 pt-2 pb-5">
             <span />
             <Transport player={player} />
-            <Extras player={player} />
+            <Extras player={player} className="h-9" />
           </div>
         </>
       ) : (

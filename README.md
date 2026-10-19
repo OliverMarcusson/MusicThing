@@ -2,8 +2,10 @@
 
 A minimalist desktop Spotify client: Electron, React, shadcn/ui, Tailwind 4 and Motion.
 
-It is a remote for Spotify Connect. The official Spotify app plays the audio and is kept hidden;
-MusicThing is the window you use. Requires Spotify Premium.
+It plays the audio itself through a bundled [librespot](https://github.com/librespot-org/librespot),
+an open-source reimplementation of the official client's protocol, which shows up as a Spotify
+Connect device named MusicThing. The official Spotify app isn't needed. Requires Spotify Premium.
+(Against Spotify's terms; can break when Spotify changes the protocol.)
 
 - Library sidebar (playlists, albums, Liked Songs) that expands on hover
 - iPod-style Cover Flow for Now playing, swipeable
@@ -16,7 +18,8 @@ MusicThing is the window you use. Requires Spotify Premium.
 1. Create an app at <https://developer.spotify.com/dashboard> with redirect URI
    `http://127.0.0.1:8888/callback` and the Web API enabled.
 2. Copy `.env.example` to `.env` and set `MAIN_VITE_SPOTIFY_CLIENT_ID`.
-3. `bun install`, then `bun run dev`.
+3. `bun install`, then `bun run dev`. The first run builds librespot with cargo (a few minutes)
+   and opens a browser once to sign the player in; its credentials are cached after that.
 
 ## Scripts
 

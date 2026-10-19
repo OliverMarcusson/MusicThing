@@ -185,14 +185,22 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
 }
 
 /** The queue drawer and volume. The drawer opens against the nearest positioned ancestor. */
-export function Extras({ player }: { player: Player }): React.JSX.Element {
+export function Extras({
+  player,
+  className
+}: {
+  player: Player
+  className?: string
+}): React.JSX.Element {
   const { state } = player
   const [volume, setVolume] = useState<number | null>(null)
   const volumeSentAt = useRef(0)
   const canVolume = state?.device.volume_percent != null
 
   return (
-    <div className="flex min-w-0 items-center justify-end gap-2 text-muted-foreground">
+    <div
+      className={cn('flex min-w-0 items-center justify-end gap-2 text-muted-foreground', className)}
+    >
       <Queue player={player} />
       <Volume2 className="ml-2 size-4 shrink-0" />
       <Slider

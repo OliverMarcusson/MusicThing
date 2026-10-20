@@ -132,17 +132,12 @@ export function Sidebar({
             </span>
           </div>
 
-          {/* layoutScroll: the playlist rows' layout animations account for this scroll. */}
-          <motion.div
-            layoutScroll
-            className={cn(
-              'w-64 flex-1 overflow-x-hidden overflow-y-auto p-2',
-              !open && '[scrollbar-width:none]'
-            )}
-          >
+          {/* Each list brings its own Scroller(s): playlists split theirs with the hidden list. */}
+          <div className="flex min-h-0 w-64 flex-1 flex-col">
             <AnimatePresence mode="wait" initial={false} custom={dir}>
               <motion.div
                 key={tab}
+                className="flex min-h-0 flex-1 flex-col"
                 custom={dir}
                 variants={slide}
                 initial="enter"
@@ -162,7 +157,7 @@ export function Sidebar({
                 )}
               </motion.div>
             </AnimatePresence>
-          </motion.div>
+          </div>
         </motion.div>
       </PanelOpen.Provider>
     </aside>
@@ -269,61 +264,65 @@ function PlaylistList({
 
   return (
     <>
-      {/* Liked Songs is pinned above the user's playlists. */}
-      <Row index={0} active={isActive('liked')} onClick={() => onSelect({ kind: 'liked' })}>
-        <Tile>
-          <Heart className="size-4 fill-current" />
-        </Tile>
-        <Label title="Liked Songs" subtitle="" />
-      </Row>
-      {/* Pins drag to reorder among themselves. layoutId on every row lets a pinned or unpinned
+      <Scroller>
+        {/* Liked Songs is pinned above the user's playlists. */}
+        <Row index={0} active={isActive('liked')} onClick={() => onSelect({ kind: 'liked' })}>
+          <Tile>
+            <Heart className="size-4 fill-current" />
+          </Tile>
+          <Label title="Liked Songs" subtitle="" />
+        </Row>
+        {/* Pins drag to reorder among themselves. layoutId on every row lets a pinned or unpinned
           playlist travel between the two lists instead of vanishing and reappearing. */}
-      <Reorder.Group as="div" axis="y" values={[...pinned]} onReorder={reorderPins}>
-        {pinnedRows.map((p, i) => (
-          <Reorder.Item
-            key={p.id}
-            as="div"
-            value={p.id}
-            layoutId={p.id}
-            dragListener={renaming !== p.id}
-            onPointerDownCapture={() => (dragged.current = false)}
-            onDragStart={() => (dragged.current = true)}
-            // Lifted while dragged, over the rows it passes.
-            whileDrag={{ scale: 1.02, zIndex: 1 }}
-            className="relative"
-          >
-            {renderRow(p, i + 1)}
-          </Reorder.Item>
-        ))}
-      </Reorder.Group>
-      {/* With pins, the rest fold away under one header; the choice is kept with the pins. */}
-      {pinnedRows.length > 0 && (
-        <FoldHeader
-          open={!folded}
-          label="Other playlists"
-          onToggle={() => {
-            setAction('fold')
-            setPrefs((s) => ({ ...s, collapsed: !s.collapsed }))
-          }}
-        />
-      )}
-      {foldRows(folded ? [] : rows, pinnedRows.length + 1)}
-      <ListEnd error={error} />
-      <div ref={sentinel} />
-      {/* Hidden playlists sit in their own folded list, stuck to the bottom of the panel. */}
-      {hiddenRows.length > 0 && (
-        <div className="sticky bottom-0 -mx-2 mt-1 border-t bg-background px-2 pb-1">
+        <Reorder.Group as="div" axis="y" values={[...pinned]} onReorder={reorderPins}>
+          {pinnedRows.map((p, i) => (
+            <Reorder.Item
+              key={p.id}
+              as="div"
+              value={p.id}
+              layoutId={p.id}
+              dragListener={renaming !== p.id}
+              onPointerDownCapture={() => (dragged.current = false)}
+              onDragStart={() => (dragged.current = true)}
+              // Lifted while dragged, over the rows it passes.
+              whileDrag={{ scale: 1.02, zIndex: 1 }}
+              className="relative"
+            >
+              {renderRow(p, i + 1)}
+            </Reorder.Item>
+          ))}
+        </Reorder.Group>
+        {/* With pins, the rest fold away under one header; the choice is kept with the pins. */}
+        {pinnedRows.length > 0 && (
           <FoldHeader
-            open={prefs.hiddenOpen}
-            label={`Hidden (${hiddenRows.length})`}
+            open={!folded}
+            label="Other playlists"
             onToggle={() => {
               setAction('fold')
-              setPrefs((s) => ({ ...s, hiddenOpen: !s.hiddenOpen }))
+              setPrefs((s) => ({ ...s, collapsed: !s.collapsed }))
             }}
           />
-          <motion.div layoutScroll className="max-h-[40vh] overflow-x-hidden overflow-y-auto">
-            {foldRows(prefs.hiddenOpen ? hiddenRows : [], 0)}
-          </motion.div>
+        )}
+        {foldRows(folded ? [] : rows, pinnedRows.length + 1)}
+        <ListEnd error={error} />
+        <div ref={sentinel} />
+      </Scroller>
+      {/* Hidden playlists: their own folded list, held to the bottom of the panel. Opening it
+          grows it upwards into the free space until it meets the list above, at most half the
+          panel; past that each part scrolls on its own. */}
+      {hiddenRows.length > 0 && (
+        <div className="mt-auto flex max-h-1/2 shrink-0 flex-col border-t">
+          <div className="shrink-0 px-2">
+            <FoldHeader
+              open={prefs.hiddenOpen}
+              label={`Hidden (${hiddenRows.length})`}
+              onToggle={() => {
+                setAction('fold')
+                setPrefs((s) => ({ ...s, hiddenOpen: !s.hiddenOpen }))
+              }}
+            />
+          </div>
+          <Scroller className="pt-0">{foldRows(prefs.hiddenOpen ? hiddenRows : [], 0)}</Scroller>
         </div>
       )}
     </>
@@ -447,7 +446,7 @@ const ROW_MOTION = {
 function AlbumList({ isActive, onSelect }: ListProps): React.JSX.Element {
   const { items, error, sentinel } = usePaged<{ album: Album }>('/me/albums?limit=50')
   return (
-    <>
+    <Scroller>
       {items.map(({ album: a }, i) => (
         <Row
           key={a.id}
@@ -461,9 +460,32 @@ function AlbumList({ isActive, onSelect }: ListProps): React.JSX.Element {
       ))}
       <ListEnd error={error} />
       <div ref={sentinel} />
-    </>
+    </Scroller>
   )
 }
+
+/**
+ * A scrolling stretch of the panel, sized to its content until the panel runs out of room.
+ * layoutScroll: the rows' layout animations account for this scroll. The scrollbar only shows
+ * with the panel open.
+ */
+const Scroller = ({
+  className,
+  children
+}: {
+  className?: string
+  children: React.ReactNode
+}): React.JSX.Element => (
+  <motion.div
+    layoutScroll
+    className={cn(
+      'min-h-0 flex-initial overflow-x-hidden overflow-y-auto p-2 group-data-[open=false]/side:[scrollbar-width:none]',
+      className
+    )}
+  >
+    {children}
+  </motion.div>
+)
 
 function Row({
   active,

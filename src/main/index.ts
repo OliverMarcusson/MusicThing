@@ -68,7 +68,7 @@ let install = (): void => {
 const resumeMarker = (): string => join(app.getPath('userData'), 'resume-playback')
 const RESUME_WITHIN_MS = 5 * 60_000
 // A start that resumes playback, or that an invite link caused, isn't fresh; the settings page's
-// startup playlist only plays on a fresh one, and only once (not on every window reload).
+// startup playlist only plays on a fresh one, and only once (not on every window reload, outside dev).
 let freshStart = true
 async function restart(then: () => void): Promise<void> {
   // A slow or failed pause mustn't hold the restart up.
@@ -237,7 +237,8 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('app:freshStart', () => {
     const fresh = freshStart
-    freshStart = false
+    // In dev, Restart is a window reload (see the tray), so a reload starts fresh there.
+    if (!is.dev) freshStart = false
     return fresh
   })
   ipcMain.handle('update:status', () => update)

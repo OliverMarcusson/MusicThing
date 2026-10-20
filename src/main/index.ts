@@ -93,6 +93,9 @@ function createTray(): void {
           : {
               label: 'Restart',
               click: () => {
+                // electron-vite's dev server exits along with Electron, so a relaunched dev app
+                // would wait on nothing; there, reload the window (main restarts on save anyway).
+                if (is.dev) return mainWindow?.webContents.reloadIgnoringCache()
                 app.relaunch()
                 app.quit()
               }

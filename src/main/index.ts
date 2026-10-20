@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, Tray } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, session, Tray } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -159,4 +159,7 @@ function checkNow(): void {
 app.on('before-quit', () => {
   quitting = true
   stopPlayer()
+  // localStorage (sidebar folds, pins, hidden playlists) reaches disk lazily; a change made just
+  // before quitting would otherwise be lost.
+  session.defaultSession.flushStorageData()
 })

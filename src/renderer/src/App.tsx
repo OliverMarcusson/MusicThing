@@ -148,6 +148,10 @@ function Shell({
               >
                 <SearchIcon />
               </Button>
+              {/* Just left of the caption buttons, whose width the window-controls overlay reports. */}
+              <span className="mt-1 ml-auto pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.75rem)] text-[11px] text-muted-foreground/60 tabular-nums select-none">
+                v{__APP_VERSION__}
+              </span>
             </div>
             <main className="relative min-h-0 flex-1">
               {/* Faint wash of the cover's colour; kept inside main so it never meets the

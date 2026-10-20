@@ -37,6 +37,8 @@ export type Cluster = {
     next_tracks: QueueItem[]
     prev_tracks: QueueItem[]
     track?: QueueItem
+    /** The playlist, album etc. playing from. */
+    context_uri?: string
     timestamp?: string
     position_as_of_timestamp?: string
     duration?: string

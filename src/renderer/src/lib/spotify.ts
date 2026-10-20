@@ -59,6 +59,8 @@ export type PlaybackState = {
   shuffle_state: boolean
   repeat_state: 'off' | 'track' | 'context'
   item: Track | null
+  /** The playlist, album etc. playing from, when there is one. */
+  context: { uri: string } | null
   device: { id: string | null; name: string; volume_percent: number | null }
 }
 

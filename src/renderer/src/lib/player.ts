@@ -42,6 +42,13 @@ export function usePlayer() {
   // Position of the current track in the play sequence; Cover Flow keys covers by it, so on a
   // skip the neighbour slides into the centre even when the same song sits on both sides.
   const [pos, setPos] = useState(0)
+  // Starting another playlist or album starts a fresh run, so nothing sits before its first song.
+  // A context-less moment (stopped, between devices) isn't a change.
+  const context = state?.context?.uri ?? null
+  const [prevContext, setPrevContext] = useState(context)
+  const fresh = context !== null && context !== prevContext
+  if (fresh) setPrevContext(context)
+  if (fresh && track?.id === prevTrack?.id) setHistory([])
   if (track?.id !== prevTrack?.id) {
     // Only a recent press of "previous" moves backwards; skips, track ends and new picks go forward.
     const skip = lastSkip.current
@@ -51,7 +58,9 @@ export function usePlayer() {
       history.at(-1)?.id === track?.id
     setPrevTrack(track)
     setPos((p) => (back ? p - 1 : p + 1))
-    setHistory((h) => (back ? h.slice(0, -1) : prevTrack ? [...h, prevTrack].slice(-HISTORY) : h))
+    setHistory((h) =>
+      fresh ? [] : back ? h.slice(0, -1) : prevTrack ? [...h, prevTrack].slice(-HISTORY) : h
+    )
   }
 
   // Playback always targets MusicThing's own player (librespot); looked up once, retried while missing.
@@ -373,6 +382,7 @@ async function toState(c: Cluster): Promise<PlaybackState | null> {
         ? 'context'
         : 'off',
     item: await trackFor(p.track.uri, p.track.metadata, duration),
+    context: p.context_uri ? { uri: p.context_uri } : null,
     device: {
       id: c.active_device_id,
       name: device?.name ?? '',

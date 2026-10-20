@@ -9,7 +9,8 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Volume2
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -19,6 +20,8 @@ import { progressAt, type Player } from '@/lib/player'
 import { clock, cn } from '@/lib/utils'
 
 const VOLUME_THROTTLE_MS = 150
+// What unmuting restores when the app started muted, so there's no earlier level to go back to.
+const UNMUTE_PERCENT = 50
 // Repeat cycles like Spotify's: off, the whole playlist or album, then the current song.
 const NEXT_REPEAT = { off: 'context', context: 'track', track: 'off' } as const
 
@@ -197,6 +200,12 @@ export function Extras({
   const [volume, setVolume] = useState<number | null>(null)
   const volumeSentAt = useRef(0)
   const canVolume = state?.device.volume_percent != null
+  const level = volume ?? state?.device.volume_percent ?? 0
+  // The last level above zero, which the mute button goes back to.
+  const audible = useRef(UNMUTE_PERCENT)
+  useEffect(() => {
+    if (level > 0) audible.current = level
+  }, [level])
 
   return (
     <div
@@ -210,12 +219,22 @@ export function Extras({
     >
       <Devices player={player} />
       <Queue player={player} />
-      <Volume2 className="ml-2 size-4 shrink-0" />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="ml-1"
+        aria-label={level ? 'Mute' : 'Unmute'}
+        title={level ? 'Mute' : 'Unmute'}
+        disabled={!canVolume}
+        onClick={() => player.setVolume(level ? 0 : audible.current)}
+      >
+        {level ? <Volume2 /> : <VolumeX />}
+      </Button>
       <Slider
         aria-label="Volume"
         className="w-24"
         disabled={!canVolume}
-        value={[volume ?? state?.device.volume_percent ?? 0]}
+        value={[level]}
         onValueChange={([v]) => {
           setVolume(v)
           // Live feedback while dragging, throttled to stay under the API rate limit.

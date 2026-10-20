@@ -17,10 +17,13 @@ import {
 } from 'fs'
 import { resolve } from 'path'
 
-const VERSION = '0.8.0'
+// "librespot" in package.json: the crate version, then a suffix to bump when PATCHES change. The
+// next run rebuilds, and installed copies with an older player update through the installer
+// (src/main/index.ts), since librespot sits outside the app code that updates on its own.
+const PLAYER = JSON.parse(readFileSync('package.json', 'utf8')).librespot
+const VERSION = PLAYER.split('-')[0]
 const CACHE = 'node_modules/.cache'
-// Bump the suffix when PATCHES change, so the next run rebuilds.
-const MARKER = `resources/librespot/patched-${VERSION}-3`
+const MARKER = `resources/librespot/patched-${PLAYER}`
 
 if (existsSync(MARKER)) process.exit(0)
 

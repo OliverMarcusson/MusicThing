@@ -41,9 +41,19 @@ const UPDATE_CHECK_MS = 5 * 60 * 1000
 const FEED = 'https://musicthing.marcusson.dev/'
 // The running code's version. app.getVersion() is the installed copy's, which boot.ts may have
 // replaced with newer code.
-const version: string = JSON.parse(
+const { version, librespot: player } = JSON.parse(
   readFileSync(join(__dirname, '../../package.json'), 'utf8')
-).version
+)
+// The player build that code needs ("librespot" in package.json). librespot runs from the installed
+// copy's unpacked resources, which only the installer replaces, so newer code that needs a newer
+// player than the installed copy has gets the installer.
+const installedPlayer = (): string | undefined => {
+  try {
+    return JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')).librespot
+  } catch {
+    return undefined
+  }
+}
 // New app code is picked up by boot.ts on any start; an installer update needs the installer run.
 let install = (): void => {
   app.relaunch()
@@ -241,6 +251,10 @@ function checkForUpdates(): void {
 async function checkNow(): Promise<void> {
   if (!app.isPackaged || update !== 'none') return
   try {
+    if (player !== installedPlayer()) {
+      await autoUpdater.checkForUpdates()
+      return
+    }
     const latest: { version: string; electron: string; file: string; sha512: string } = await (
       await net.fetch(`${FEED}app.json`, { cache: 'no-store' })
     ).json()

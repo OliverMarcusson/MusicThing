@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, Reorder, useReducedMotion, type Variants } from 'motion/react'
 import { Disc3, Eye, EyeOff, Heart, ListMusic, Pencil, Pin, PinOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -122,7 +122,9 @@ export function Sidebar({
             </span>
           </div>
 
-          <div
+          {/* layoutScroll: the playlist rows' layout animations account for this scroll. */}
+          <motion.div
+            layoutScroll
             className={cn(
               'w-64 flex-1 overflow-x-hidden overflow-y-auto p-2',
               !open && '[scrollbar-width:none]'
@@ -150,7 +152,7 @@ export function Sidebar({
                 )}
               </motion.div>
             </AnimatePresence>
-          </div>
+          </motion.div>
         </motion.div>
       </PanelOpen.Provider>
     </aside>
@@ -206,26 +208,38 @@ function PlaylistList({
   const loadedById = new Map(items.filter(Boolean).map((p) => [p.id, p]))
   const pinned = new Set(prefs.pinned.map((p) => p.id))
   const hidden = new Set(prefs.hidden)
-  const rows = [
-    ...prefs.pinned.map((p) => loadedById.get(p.id) ?? p),
-    ...[...loadedById.values()].filter(
-      (p) => !pinned.has(p.id) && (showHidden || !hidden.has(p.id))
-    )
-  ]
+  const pinnedRows = prefs.pinned.map((p) => loadedById.get(p.id) ?? p)
+  const rows = [...loadedById.values()].filter(
+    (p) => !pinned.has(p.id) && (showHidden || !hidden.has(p.id))
+  )
 
+  // The last change decides how rows come and go: see ROW_MOTION.
+  const [action, setAction] = useState<Action>(null)
   // Pinning unhides and hiding unpins, so a playlist is never both.
-  const togglePin = (p: Playlist): void =>
+  const togglePin = (p: Playlist): void => {
+    setAction('move')
     setPrefs((s) => ({
       ...s,
       pinned: pinned.has(p.id) ? s.pinned.filter((x) => x.id !== p.id) : [...s.pinned, p],
       hidden: s.hidden.filter((id) => id !== p.id)
     }))
-  const toggleHidden = (p: Playlist): void =>
+  }
+  const toggleHidden = (p: Playlist): void => {
+    setAction('fold')
     setPrefs((s) => ({
       ...s,
       hidden: hidden.has(p.id) ? s.hidden.filter((id) => id !== p.id) : [...s.hidden, p.id],
       pinned: s.pinned.filter((x) => x.id !== p.id)
     }))
+  }
+  const reorderPins = (ids: string[]): void =>
+    setPrefs((s) => ({
+      ...s,
+      pinned: ids.flatMap((id) => s.pinned.find((p) => p.id === id) ?? [])
+    }))
+
+  // A drag ends in a click on the row it started on; that click shouldn't open the playlist.
+  const dragged = useRef(false)
   // An empty name, or Spotify's own, drops the local one.
   const rename = (p: Playlist, name: string): void =>
     setPrefs((s) => {
@@ -244,58 +258,51 @@ function PlaylistList({
         </Tile>
         <Label title="Liked Songs" subtitle="" />
       </Row>
-      {rows.map((p, i) => {
-        const name = prefs.names[p.id] ?? p.name
-        return (
-          <PlaylistMenu
+      {/* Pins drag to reorder among themselves. layoutId on every row lets a pinned or unpinned
+          playlist travel between the two lists instead of vanishing and reappearing. */}
+      <Reorder.Group as="div" axis="y" values={[...pinned]} onReorder={reorderPins}>
+        {pinnedRows.map((p, i) => (
+          <Reorder.Item
             key={p.id}
-            pinned={pinned.has(p.id)}
-            hidden={hidden.has(p.id)}
-            onOpenChange={setMenuOpen}
-            onPin={() => togglePin(p)}
-            onHide={() => toggleHidden(p)}
-            onRename={() => setRenaming(p.id)}
+            as="div"
+            value={p.id}
+            layoutId={p.id}
+            dragListener={renaming !== p.id}
+            onPointerDownCapture={() => (dragged.current = false)}
+            onDragStart={() => (dragged.current = true)}
+            // Lifted while dragged, over the rows it passes.
+            whileDrag={{ scale: 1.02, zIndex: 1 }}
+            className="relative"
           >
-            {renaming === p.id ? (
-              <RenameRow
-                images={p.images}
-                name={name}
-                original={p.name}
-                onDone={(n) => {
-                  if (n !== null) rename(p, n)
-                  setRenaming(null)
-                }}
-              />
-            ) : (
-              <Row
-                index={i + 1}
-                active={isActive('playlist', p.id)}
-                // The renamed title carries through to the playlist's page.
-                onClick={() => onSelect({ kind: 'playlist', id: p.id, playlist: { ...p, name } })}
-              >
-                <Cover images={p.images} />
-                <Label
-                  title={name}
-                  subtitle={
-                    <>
-                      {pinned.has(p.id) && (
-                        <Pin className="mr-1 inline size-3 -translate-y-px rotate-45" />
-                      )}
-                      {p.owner.display_name ?? ''}
-                    </>
-                  }
-                />
-              </Row>
-            )}
-          </PlaylistMenu>
-        )
-      })}
+            {renderRow(p, i + 1)}
+          </Reorder.Item>
+        ))}
+      </Reorder.Group>
+      <AnimatePresence initial={false} custom={action}>
+        {rows.map((p, i) => (
+          <motion.div
+            key={p.id}
+            layoutId={p.id}
+            custom={action}
+            variants={ROW_MOTION}
+            initial="out"
+            animate="in"
+            exit="out"
+            className="overflow-hidden"
+          >
+            {renderRow(p, pinnedRows.length + i + 1)}
+          </motion.div>
+        ))}
+      </AnimatePresence>
       {prefs.hidden.length > 0 && (
         <Button
           variant="ghost"
           size="sm"
           className="mt-1 w-full justify-start px-2.5 text-xs text-muted-foreground group-data-[open=false]/side:invisible"
-          onClick={() => setShowHidden((s) => !s)}
+          onClick={() => {
+            setAction('fold')
+            setShowHidden((s) => !s)
+          }}
         >
           {showHidden ? 'Leave out hidden' : `Show ${prefs.hidden.length} hidden`}
         </Button>
@@ -304,7 +311,71 @@ function PlaylistList({
       <div ref={sentinel} />
     </>
   )
+
+  function renderRow(p: Playlist, index: number): React.JSX.Element {
+    const name = prefs.names[p.id] ?? p.name
+    return (
+      <PlaylistMenu
+        pinned={pinned.has(p.id)}
+        hidden={hidden.has(p.id)}
+        onOpenChange={setMenuOpen}
+        onPin={() => togglePin(p)}
+        onHide={() => toggleHidden(p)}
+        onRename={() => setRenaming(p.id)}
+      >
+        {renaming === p.id ? (
+          <RenameRow
+            images={p.images}
+            name={name}
+            original={p.name}
+            onDone={(n) => {
+              if (n !== null) rename(p, n)
+              setRenaming(null)
+            }}
+          />
+        ) : (
+          <Row
+            // Only the first load staggers in; later rows arrive through ROW_MOTION.
+            index={action ? undefined : index}
+            active={isActive('playlist', p.id)}
+            // The renamed title carries through to the playlist's page.
+            onClick={() =>
+              !dragged.current && onSelect({ kind: 'playlist', id: p.id, playlist: { ...p, name } })
+            }
+          >
+            <Cover images={p.images} />
+            <Label
+              title={name}
+              subtitle={
+                <>
+                  {pinned.has(p.id) && (
+                    <Pin className="mr-1 inline size-3 -translate-y-px rotate-45" />
+                  )}
+                  {p.owner.display_name ?? ''}
+                </>
+              }
+            />
+          </Row>
+        )}
+      </PlaylistMenu>
+    )
+  }
 }
+
+type Action = 'move' | 'fold' | null
+
+/**
+ * How unpinned rows come and go, by the change that caused it (AnimatePresence hands exiting
+ * rows the latest). fold: hiding or showing hidden ones, rows open and close in place. move:
+ * pinning and unpinning, the row leaves at once, since its layoutId twin flies to the new spot.
+ */
+const ROW_MOTION = {
+  in: { opacity: 1, height: 'auto', transition: { duration: 0.2, ease: 'easeOut' } },
+  out: (action: Action) =>
+    action === 'fold'
+      ? { opacity: 0, height: 0, transition: { duration: 0.2, ease: 'easeOut' } }
+      : { opacity: 0, transition: { duration: 0 } }
+} satisfies Variants
 
 function AlbumList({ isActive, onSelect }: ListProps): React.JSX.Element {
   const { items, error, sentinel } = usePaged<{ album: Album }>('/me/albums?limit=50')

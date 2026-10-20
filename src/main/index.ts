@@ -11,7 +11,7 @@ import {
   Tray
 } from 'electron'
 import { createHash } from 'crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -21,6 +21,8 @@ import { webApi } from './webapi'
 import {
   jam as connectJam,
   move as connectMove,
+  pauseForRestart,
+  resumeAfterRestart,
   transfer as connectTransfer,
   watchJam,
   queue as connectQueue,
@@ -58,6 +60,21 @@ const installedPlayer = (): string | undefined => {
 let install = (): void => {
   app.relaunch()
   app.quit()
+}
+
+// Restarting (to update, or from the tray) picks playback up where it was: playback here is paused
+// first and a marker left, and the next start, finding a recent one, plays on from there. Without
+// one a start stays quiet. The installer can take a while, hence the generous window.
+const resumeMarker = (): string => join(app.getPath('userData'), 'resume-playback')
+const RESUME_WITHIN_MS = 5 * 60_000
+async function restart(then: () => void): Promise<void> {
+  // A slow or failed pause mustn't hold the restart up.
+  const paused = await Promise.race([
+    pauseForRestart(),
+    new Promise<boolean>((done) => setTimeout(done, 3000, false))
+  ])
+  if (paused) writeFileSync(resumeMarker(), '')
+  then()
 }
 
 // Off-white lines on a dark taskbar, grey on a light one. From the installed copy: code that
@@ -130,15 +147,17 @@ function createTray(): void {
         { type: 'separator' },
         // With an update downloaded, restarting applies it.
         update === 'ready'
-          ? { label: 'Restart to update', click: () => install() }
+          ? { label: 'Restart to update', click: () => restart(() => install()) }
           : {
               label: 'Restart',
               click: () => {
                 // electron-vite's dev server exits along with Electron, so a relaunched dev app
                 // would wait on nothing; there, reload the window (main restarts on save anyway).
                 if (is.dev) return mainWindow?.webContents.reloadIgnoringCache()
-                app.relaunch()
-                app.quit()
+                restart(() => {
+                  app.relaunch()
+                  app.quit()
+                })
               }
             },
         { label: 'Quit', click: () => app.quit() }
@@ -214,8 +233,14 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('update:status', () => update)
   ipcMain.handle('update:check', () => checkNow())
-  ipcMain.handle('update:install', () => update === 'ready' && install())
+  ipcMain.handle('update:install', () => update === 'ready' && restart(() => install()))
 
+  try {
+    if (Date.now() - statSync(resumeMarker()).mtimeMs < RESUME_WITHIN_MS) resumeAfterRestart()
+    rmSync(resumeMarker())
+  } catch {
+    // No marker: an ordinary start.
+  }
   createWindow()
   createTray()
   const url = process.argv.find((a) => LINK.test(a))

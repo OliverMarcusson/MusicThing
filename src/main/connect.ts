@@ -499,6 +499,7 @@ export const jam = (
 // when it's playing on another of the user's devices. Once per Jam until the player plays, decided
 // before the request goes out, so pushes arriving meanwhile can't queue it again.
 let playerSeen = false
+let resumeOnStart = false
 let healed: string | null = null
 let healing = false
 function heal(
@@ -512,6 +513,8 @@ function heal(
     (update?.update_reason === 'NEW_DEVICE_APPEARED' &&
       !!update.devices_that_changed?.includes(here))
   playerSeen = true
+  const resume = back && resumeOnStart
+  if (back) resumeOnStart = false
   if (c.active_device_id === here) healed = null
   const idle = !!inJam && !c.active_device_id && healed !== inJam.session_id
   if (healing || (!back && !idle)) return
@@ -519,13 +522,36 @@ function heal(
   if (inJam) healed = inJam.session_id
   op(async () => {
     const s = (inJam = await session('/v2/sessions/current'))
-    if (!s) return
+    if (!s) {
+      // Paused by pauseForRestart, so the position Spotify kept is exact.
+      if (resume && (!c.active_device_id || c.active_device_id === here)) await transferTo(here)
+      return
+    }
     healed = s.session_id
     if (!c.active_device_id || c.active_device_id === here) await transferTo(here)
   }).then((r) => {
     healing = false
     if ('error' in r) console.error('Bringing the Jam back failed:', r.message)
   })
+}
+
+/**
+ * Before restarting: pauses this player, so Spotify keeps exactly where the song was, and says
+ * whether anything was playing here to resume (see resumeAfterRestart). A Jam isn't paused, as that
+ * would pause everyone in it; it comes back on its own once the player does (heal).
+ */
+export const pauseForRestart = (): Promise<boolean> =>
+  op(async () => {
+    const c = await cluster()
+    const p = c.player_state
+    if (inJam || c.active_device_id !== playerId(c) || !p.is_playing || p.is_paused) return false
+    await send(c, { endpoint: 'pause' })
+    return true
+  }).then((r) => 'ok' in r && r.ok)
+
+/** After a restart that paused playback: once the player is back, play from there on it. */
+export const resumeAfterRestart = (): void => {
+  resumeOnStart = true
 }
 
 function emit(c: Cluster, update?: Parameters<typeof heal>[1]): void {

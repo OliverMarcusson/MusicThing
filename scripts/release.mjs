@@ -20,7 +20,7 @@ const local = process.argv.includes('--local')
 
 if (local) {
   // The release is tagged at HEAD, so it must be built from exactly HEAD.
-  if (out('git', ['status', '--porcelain', '--untracked-files=no']))
+  if (out('git', ['status', '--porcelain', '--untracked-files=no', '--ignore-submodules']))
     throw new Error('Commit or stash your changes first: the release is tagged at HEAD.')
   run('bun', ['run', 'build:win'])
   run('node', ['scripts/build-linux.mjs'])

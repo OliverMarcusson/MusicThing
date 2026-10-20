@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Check, ChevronsUpDown, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,8 +11,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import type { Settings as SettingsValue } from '@/lib/settings'
-import { imageUrl, type Playlist } from '@/lib/spotify'
-import { usePaged } from '@/lib/use-paged'
+import { api, imageUrl, type Paging, type Playlist } from '@/lib/spotify'
 import { cn } from '@/lib/utils'
 
 const LIKED = { uri: 'spotify:collection:tracks', name: 'Liked Songs' }
@@ -80,7 +79,11 @@ function Row({
   )
 }
 
-/** Liked Songs, then the user's playlists, searchable; more load as the list scrolls. */
+/**
+ * Liked Songs, then the user's playlists, searchable. All of them load on first open, every page:
+ * search only sees what's loaded, and a scroll-triggered page wouldn't start in a popover that
+ * mounts after its list is asked for.
+ */
 function PlaylistPicker({
   value,
   onChange
@@ -89,7 +92,26 @@ function PlaylistPicker({
   onChange: (pick: SettingsValue['startup']) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const { items, sentinel } = usePaged<Playlist>(open ? '/me/playlists?limit=50' : null)
+  const [playlists, setPlaylists] = useState<Playlist[] | null>(null)
+  useEffect(() => {
+    if (!open || playlists) return
+    let cancelled = false
+    ;(async () => {
+      const all: Playlist[] = []
+      for (let next: string | null = '/me/playlists?limit=50'; next;) {
+        const page: Paging<Playlist> | null = await api<Paging<Playlist>>(next)
+        all.push(...(page?.items ?? []))
+        next = page?.next ?? null
+      }
+      return all
+    })().then(
+      (all) => !cancelled && setPlaylists(all),
+      () => !cancelled && setPlaylists([])
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [open, playlists])
   const pick = (p: { uri: string; name: string }): void => {
     onChange({ uri: p.uri, name: p.name })
     setOpen(false)
@@ -122,7 +144,7 @@ function PlaylistPicker({
               selected={value?.uri === LIKED.uri}
               onSelect={() => pick(LIKED)}
             />
-            {items
+            {(playlists ?? [])
               .filter((p) => p?.id)
               .map((p) => (
                 <Item
@@ -140,7 +162,9 @@ function PlaylistPicker({
                   onSelect={() => pick(p)}
                 />
               ))}
-            <div ref={sentinel} />
+            {!playlists && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading playlists…</p>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

@@ -12,6 +12,8 @@ const HISTORY = 50
 const RECENT = 50
 // How close to its end a track must be for a stop to count as the playlist running out.
 const END_MARGIN_MS = 4000
+// How long shuffle or repeat set here outlasts pushes that still show the old setting.
+const HOLD_MS = 2000
 
 export type Player = ReturnType<typeof usePlayer>
 
@@ -38,6 +40,16 @@ export function usePlayer() {
   const ended = useRef<string | null>(null)
   // A track change that may be that stop, until its pause shows up or the window passes.
   const stopping = useRef<{ id: string | null; until: number } | null>(null)
+  // Shuffle or repeat just set here. Pushes sent before Spotify applied it still carry the old
+  // setting, which would flip the button back and forth, so for a moment this wins over them.
+  const held = useRef<{ patch: Partial<PlaybackState>; until: number } | null>(null)
+  const hold = (patch: Partial<PlaybackState>): void => {
+    const h = held.current
+    held.current = {
+      patch: { ...(h && Date.now() < h.until && h.patch), ...patch },
+      until: Date.now() + HOLD_MS
+    }
+  }
 
   // Tracks played this session, derived during render so Cover Flow moves the old centre cover
   // left in the same frame the new one arrives (an effect would leave a one-frame gap).
@@ -149,8 +161,10 @@ export function usePlayer() {
       setPlayingAnywhere(
         !!c.active_device_id && !!c.player_state?.is_playing && !c.player_state.is_paused
       )
-      const next = await toState(c)
+      const pushed = await toState(c)
       if (seq !== latest.current) return
+      const h = held.current
+      const next = pushed && h && at < h.until ? { ...pushed, ...h.patch } : pushed
       const wait = awaiting.current
       if (wait) {
         if (next?.item?.uri !== wait.uri) return
@@ -327,6 +341,7 @@ export function usePlayer() {
     },
     /** Shuffle and repeat apply to MusicThing's player; the queue refetches to show the new order. */
     setShuffle: async (on: boolean) => {
+      hold({ shuffle_state: on })
       const id = await device()
       await command('PUT', `/me/player/shuffle?state=${on}${id ? `&device_id=${id}` : ''}`, {
         shuffle_state: on
@@ -334,6 +349,7 @@ export function usePlayer() {
       setQueueVersion((v) => v + 1)
     },
     setRepeat: async (mode: PlaybackState['repeat_state']) => {
+      hold({ repeat_state: mode })
       const id = await device()
       await command('PUT', `/me/player/repeat?state=${mode}${id ? `&device_id=${id}` : ''}`, {
         repeat_state: mode

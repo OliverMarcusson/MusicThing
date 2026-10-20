@@ -96,7 +96,7 @@ function onPush(msg: {
               String(msg.headers?.['Transfer-Encoding'] === 'gzip' ? gunzipSync(raw) : raw)
             )
           : p
-      if (update?.cluster) emit(filled(update.cluster))
+      if (update?.cluster) emit(filled(update.cluster), update)
     } catch (err) {
       console.error('Unreadable Spotify Connect push:', err)
     }
@@ -250,7 +250,11 @@ export const command = (cmd: Record<string, unknown>, to?: string): Promise<Conn
 const transferTo = (to: string): Promise<Response> =>
   call(`/connect-state/v1/connect/transfer/from/${DEVICE_ID}/to/${to}`, {
     method: 'POST',
-    body: JSON.stringify({ transfer_options: { restore_paused: 'resume' } })
+    // Pick up where the song would be by now, as Spotify's own Jam transfers do; without it the
+    // song starts over, out of step with everyone else in a Jam.
+    body: JSON.stringify({
+      transfer_options: { restore_paused: 'resume', restore_position: 'extrapolate' }
+    })
   })
 
 /** Moves playback to `to` and keeps it playing. */
@@ -471,39 +475,60 @@ export const jam = (
         await session(`/v3/sessions/${encodeURIComponent(current.session_id)}`, {
           method: 'DELETE'
         })
-      else await session(`/v2/sessions/leave?${here()}`, { method: 'POST' })
+      else
+        await session(`/v3/sessions/${encodeURIComponent(current.session_id)}/leave`, {
+          method: 'POST'
+        })
       return null
     }
+    heal(c)
     return toJam(current)
   })
 
-// Quitting, or librespot dropping its connection, takes the Jam's playback away with the player.
-// Whenever the player comes back, a guest leaves and joins again, the way its first join started
-// playback here; a host whose Jam isn't playing on another device moves it here. librespot comes
-// back under the same device id, which Spotify may still list as playing, so that says nothing.
+// Brings the Jam back to this player when it's lost it: quitting or librespot dropping its
+// connection takes the Jam's playback away with the player, and a guest who joined from another
+// app (an invite link opens the official one) has nothing playing once that app closes.
+// - The player is back: it counts as back the first time it's seen, and whenever Spotify says it
+//   (re)appeared, since the update for its disappearance can still list it. librespot comes back
+//   under the same device id, which Spotify may still list as playing, so that says nothing.
+// - The user is in a Jam that plays on none of their devices.
+// Either way the user's playback state still holds the Jam, so moving it to this player resumes
+// the Jam here, for hosts and guests alike (joining again doesn't; Spotify ignores it). Left alone
+// when it's playing on another of the user's devices. Once per Jam until the player plays, decided
+// before the request goes out, so pushes arriving meanwhile can't queue it again.
 let playerSeen = false
-function emit(c: Cluster): void {
-  watcher?.(c)
+let healed: string | null = null
+let healing = false
+function heal(
+  c: Cluster,
+  update?: { update_reason?: string; devices_that_changed?: string[] }
+): void {
   const here = playerId(c)
-  const back = !!here && !playerSeen
-  playerSeen = !!here
-  if (!back) return
+  if (!here) return
+  const back =
+    !playerSeen ||
+    (update?.update_reason === 'NEW_DEVICE_APPEARED' &&
+      !!update.devices_that_changed?.includes(here))
+  playerSeen = true
+  if (c.active_device_id === here) healed = null
+  const idle = !!inJam && !c.active_device_id && healed !== inJam.session_id
+  if (healing || (!back && !idle)) return
+  healing = true
+  if (inJam) healed = inJam.session_id
   op(async () => {
     const s = (inJam = await session('/v2/sessions/current'))
     if (!s) return
-    if (s.is_session_owner) {
-      if (!c.active_device_id || c.active_device_id === here) await transferTo(here)
-      return
-    }
-    // Leaving without a token to come back with would drop out of the Jam for good.
-    if (!s.join_session_token) throw new Error('Spotify sent no Jam token to rejoin with.')
-    await session(`/v2/sessions/leave?local_device_id=${here}`, { method: 'POST' })
-    inJam = await session(
-      `/v2/sessions/join/${s.join_session_token}?local_device_id=${here}&playback_control=listen_and_control`,
-      { method: 'POST' }
-    )
-    jamWatcher?.(toJam(inJam))
-  }).then((r) => 'error' in r && console.error('Rejoining the Jam failed:', r.message))
+    healed = s.session_id
+    if (!c.active_device_id || c.active_device_id === here) await transferTo(here)
+  }).then((r) => {
+    healing = false
+    if ('error' in r) console.error('Bringing the Jam back failed:', r.message)
+  })
+}
+
+function emit(c: Cluster, update?: Parameters<typeof heal>[1]): void {
+  watcher?.(c)
+  heal(c, update)
 }
 
 /** Calls `cb` whenever the Jam changes (someone joins, leaves, or it ends). */

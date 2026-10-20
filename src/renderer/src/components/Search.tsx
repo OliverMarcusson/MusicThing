@@ -180,10 +180,11 @@ export function Search({
         {error && <p className="py-6 text-center text-sm text-destructive">{error}</p>}
         {libraryHits.length > 0 && (
           <CommandGroup heading="Library">
-            {libraryHits.map((h) => (
+            {libraryHits.map((h, i) => (
               <CommandItem
                 key={'id' in h.view ? h.view.id : h.view.kind}
                 value={`library:${'id' in h.view ? h.view.id : h.view.kind}`}
+                {...fill(i)}
                 onSelect={() => {
                   onNavigate(h.view)
                   done()

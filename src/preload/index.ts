@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { WebPage } from '../main/webplayer'
-import type { ConnectResult, QueueRef } from '../main/connect'
+import type { Cluster, ConnectResult, QueueRef } from '../main/connect'
 
 export type UpdateStatus = 'none' | 'downloading' | 'ready'
 
@@ -20,6 +20,14 @@ const api = {
     ipcRenderer.invoke('connect:skipTo', uid),
   connectSkipBy: (n: number, uri: string): Promise<ConnectResult<true>> =>
     ipcRenderer.invoke('connect:skipBy', n, uri),
+  /** Starts (or re-reads) the playback state pushed over Spotify Connect; see onCluster. */
+  connectWatch: (): Promise<ConnectResult<true>> => ipcRenderer.invoke('connect:watch'),
+  /** Calls back with every playback state push; returns the unsubscribe. */
+  onCluster: (cb: (c: Cluster) => void): (() => void) => {
+    const listener = (_: unknown, c: Cluster): void => cb(c)
+    ipcRenderer.on('connect:cluster', listener)
+    return () => ipcRenderer.removeListener('connect:cluster', listener)
+  },
   updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
   /** Calls back whenever the update status changes; returns the unsubscribe. */
   onUpdateStatus: (cb: (status: UpdateStatus) => void): (() => void) => {

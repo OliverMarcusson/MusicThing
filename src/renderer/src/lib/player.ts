@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, ApiError, Unauthorized, type PlaybackState, type Track } from './spotify'
 
-// ponytail: polls /me/player; the Web API has no push channel for playback state.
-const POLL_MS = 1500
-// Spotify reports the old state for a moment after a command; ignore polls until it settles.
-const SETTLE_MS = 1500
-const SKIP_POLL_MS = 250
+// Playback state is pushed over Spotify Connect (main/connect.ts `watch`); the Web API only
+// sends commands and fills in track details.
+// How long a batched skip waits for Spotify to report its target track.
+const SKIP_WAIT_MS = 4000
 // How long after pressing "previous" a track change still counts as going back.
 const BACK_WINDOW_MS = 5000
 const HISTORY = 50
@@ -18,7 +17,6 @@ export function usePlayer() {
   const [state, setState] = useState<PlaybackState | null>(null)
   const [syncedAt, setSyncedAt] = useState(() => Date.now())
   const [error, setError] = useState<unknown>(null)
-  const lastCommand = useRef(0)
   // Bumped after queueing so an open queue view refetches.
   const [queueVersion, setQueueVersion] = useState(0)
   const deviceId = useRef<string | null>(null)
@@ -97,67 +95,66 @@ export function usePlayer() {
     setState(ended.current ? null : next)
   }, [])
 
-  // One poll at a time, so polls don't stack up while api() waits out a rate limit.
-  const polling = useRef(false)
-  const sync = useCallback(async () => {
-    if (polling.current) return
-    polling.current = true
-    const startedAt = Date.now()
-    try {
-      const next = await api<PlaybackState>('/me/player')
-      // Drop polls that started before, or too soon after, the latest command.
-      if (startedAt < lastCommand.current + SETTLE_MS) return
-      show(next, startedAt)
-      setSyncedAt(startedAt)
-      setError(null)
-    } catch (err) {
-      // Transient poll failures (429/5xx) are retried by the next poll; only surface auth loss.
-      if (err instanceof Unauthorized) setError(err)
-    } finally {
-      polling.current = false
-    }
-  }, [show])
+  // Pushes are applied in order, even though a new track's details take a moment to fetch.
+  const latest = useRef(0)
+  // A batched skip waiting for its target; pushes before it are tracks passed on the way.
+  const awaiting = useRef<{ uri: string; done: (s: PlaybackState, at: number) => void } | null>(
+    null
+  )
+  // Re-reads the state; the answer arrives as a push.
+  const refresh = useCallback(async () => {
+    const r = await window.api.connectWatch()
+    if ('error' in r && r.error === 'signin') setError(new Unauthorized())
+  }, [])
 
   useEffect(() => {
-    sync()
-    const id = setInterval(() => !document.hidden && sync(), POLL_MS)
-    document.addEventListener('visibilitychange', sync)
-    return () => {
-      clearInterval(id)
-      document.removeEventListener('visibilitychange', sync)
+    async function apply(c: Cluster): Promise<void> {
+      const seq = ++latest.current
+      const at = Date.now()
+      const next = await toState(c)
+      if (seq !== latest.current) return
+      const wait = awaiting.current
+      if (wait) {
+        if (next?.item?.uri !== wait.uri) return
+        awaiting.current = null
+        return wait.done(next, at)
+      }
+      show(next, at)
+      setSyncedAt(at)
+      setError(null)
+      // Once a slow lookup answers, show the real details (unless a newer push came first).
+      const late = next?.item && standIns.get(next.item)
+      late?.then((t) => {
+        if (t && seq === latest.current) apply(c)
+      })
     }
-  }, [sync])
+    const off = window.api.onCluster(apply)
+    refresh()
+    return off
+  }, [show, refresh])
 
-  // Optimistically patch local state and send the command; polling resumes once Spotify settles.
+  // Optimistically patch local state and send the command; the push that follows confirms it.
   const command = useCallback(
     async (method: string, path: string, patch?: Partial<PlaybackState>) => {
-      lastCommand.current = Date.now()
       if (patch) {
         setState((s) => (s ? { ...s, ...patch } : s))
         setSyncedAt(Date.now())
       }
       try {
         await api(path, { method })
-        lastCommand.current = Date.now()
       } catch (err) {
         setError(err)
         if (err instanceof ApiError && err.status === 404) deviceId.current = null
-        lastCommand.current = 0
-        sync()
+        refresh()
       }
     },
-    [sync]
+    [refresh]
   )
 
-  // Track changes can't be patched optimistically (we don't know the next track), so poll fast
-  // until Spotify reports a different track or a restarted one, instead of waiting out SETTLE_MS.
+  // Track changes can't be patched optimistically (we don't know the next track); the push shows it.
   const changeTrack = useCallback(
     async (method: string, path: string, body?: object) => {
-      const before = state
-      const beforeProgress = before ? progressAt(before, syncedAt) : 0
-      lastCommand.current = Date.now()
-      // Starting something leaves a finished playlist behind, even if the first poll is too soon to
-      // see it playing.
+      // Starting something leaves a finished playlist behind.
       ended.current = null
       try {
         await api(path, {
@@ -170,27 +167,10 @@ export function usePlayer() {
       } catch (err) {
         setError(err)
         if (err instanceof ApiError && err.status === 404) deviceId.current = null
-        lastCommand.current = 0
-        return sync()
+        refresh()
       }
-      for (let i = 0; i < 12; i++) {
-        lastCommand.current = Date.now()
-        await new Promise((r) => setTimeout(r, SKIP_POLL_MS))
-        const startedAt = Date.now()
-        const next = await api<PlaybackState>('/me/player').catch(() => null)
-        const changed =
-          next?.item?.id !== before?.item?.id ||
-          (beforeProgress > 3000 && (next?.progress_ms ?? 0) < 2000)
-        if (next && changed) {
-          show(next, startedAt)
-          setSyncedAt(startedAt)
-          setError(null)
-          break
-        }
-      }
-      lastCommand.current = 0
     },
-    [state, syncedAt, sync, show]
+    [refresh]
   )
 
   /**
@@ -200,46 +180,49 @@ export function usePlayer() {
    */
   const skipBy = useCallback(
     async (n: number, passed: Track[], target: Track): Promise<boolean> => {
-      lastCommand.current = Date.now()
       lastSkip.current = { dir: n > 0 ? 'next' : 'previous', at: Date.now() }
+      let entry: typeof awaiting.current = null
+      const reached = new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          if (awaiting.current === entry) awaiting.current = null
+          resolve(false)
+        }, SKIP_WAIT_MS)
+        entry = {
+          uri: target.uri,
+          done: (next, at) => {
+            clearTimeout(timer)
+            // Same batch as setState, so the render-time history derivation sees no change of its own.
+            setPrevTrack(next.item)
+            setHistory((h) => (n > 0 ? [...h, ...passed].slice(-HISTORY) : h.slice(0, n)))
+            setPos((p) => p + n)
+            setState(next)
+            setSyncedAt(at)
+            setError(null)
+            resolve(true)
+          }
+        }
+        awaiting.current = entry
+      })
       try {
         // One Connect batch lands exactly; the Web API's one-command-per-track is the fallback
-        // (web player signed out, or the queue moved since Cover Flow drew it).
+        // (the queue moved since Cover Flow drew it).
         if (!('ok' in (await window.api.connectSkipBy(n, target.uri)))) {
           // "Previous" mid-song restarts it; from the top it steps back a track.
           if (n < 0) await api('/me/player/seek?position_ms=0', { method: 'PUT' })
-          for (let i = 0; i < Math.abs(n); i++) {
-            lastCommand.current = Date.now()
+          for (let i = 0; i < Math.abs(n); i++)
             await api(`/me/player/${n > 0 ? 'next' : 'previous'}`, { method: 'POST' })
-          }
         }
       } catch (err) {
+        if (awaiting.current === entry) awaiting.current = null
         setError(err)
-        lastCommand.current = 0
-        sync()
+        refresh()
         return false
       }
-      for (let i = 0; i < 16; i++) {
-        lastCommand.current = Date.now()
-        await new Promise((r) => setTimeout(r, SKIP_POLL_MS))
-        const startedAt = Date.now()
-        const next = await api<PlaybackState>('/me/player').catch(() => null)
-        if (next?.item?.uri !== target.uri) continue
-        // Same batch as setState, so the render-time history derivation sees no change of its own.
-        setPrevTrack(next.item)
-        setHistory((h) => (n > 0 ? [...h, ...passed].slice(-HISTORY) : h.slice(0, n)))
-        setPos((p) => p + n)
-        setState(next)
-        setSyncedAt(startedAt)
-        setError(null)
-        lastCommand.current = 0
-        return true
-      }
-      lastCommand.current = 0
-      sync()
+      if (await reached) return true
+      refresh()
       return false
     },
-    [sync]
+    [refresh]
   )
 
   return {
@@ -282,7 +265,6 @@ export function usePlayer() {
     queueVersion,
     /** After the queue or track changed outside the Web API (Connect commands). */
     refreshQueue: () => {
-      sync()
       // The Web API's queue trails Connect by up to ~750ms (measured); fetching sooner returns the
       // old order, which snaps a dropped row back before it lands.
       setTimeout(() => setQueueVersion((v) => v + 1), 1000)
@@ -319,7 +301,88 @@ export function usePlayer() {
   }
 }
 
-// Interpolates playback position between polls.
+type Cluster = Parameters<Parameters<typeof window.api.onCluster>[0]>[0]
+
+// Connect names cover art spotify:image:<id>.
+const imageUrlFrom = (uri?: string): string | undefined =>
+  uri?.startsWith('spotify:image:') ? `https://i.scdn.co/image/${uri.slice(14)}` : uri
+
+// One lookup per track, shared by every push that shows it. A failed one is retried after a
+// minute at the earliest: while rate-limited, each request only pushes the limit further out.
+const tracks = new Map<string, Promise<Track | null>>()
+// Stand-ins for tracks whose lookup hadn't answered yet, with that lookup.
+const standIns = new WeakMap<Track, Promise<Track | null>>()
+
+/**
+ * Connect only sends a track's uri and some metadata, so the rest comes from the Web API. If that's
+ * slow (rate-limited), Connect's own metadata stands in; see `standIns`.
+ */
+async function trackFor(
+  uri: string,
+  meta: Record<string, string> = {},
+  duration: number
+): Promise<Track | null> {
+  const id = uri.match(/^spotify:track:(\w+)$/)?.[1]
+  if (!id) return null
+  let fetched = tracks.get(id)
+  if (!fetched) {
+    fetched = api<Track>(`/tracks/${id}`)
+      .catch(() => null)
+      .then((t) => {
+        if (!t) setTimeout(() => tracks.delete(id), 60_000)
+        return t
+      })
+    tracks.set(id, fetched)
+  }
+  const t = await Promise.race([fetched, new Promise<null>((r) => setTimeout(r, 2000, null))])
+  if (t) return t
+  const art = imageUrlFrom(meta.image_large_url ?? meta.image_url)
+  const standIn: Track = {
+    id,
+    uri,
+    name: meta.title ?? '',
+    duration_ms: duration,
+    artists: meta.artist_name ? [{ name: meta.artist_name }] : [],
+    album: { name: meta.album_title ?? '', images: art ? [{ url: art, width: 640 }] : [] }
+  }
+  standIns.set(standIn, fetched)
+  return standIn
+}
+
+/** The Web API's /me/player shape, built from a Connect cluster. */
+async function toState(c: Cluster): Promise<PlaybackState | null> {
+  const p = c.player_state
+  if (!c.active_device_id || !p?.track?.uri) return null
+  const duration = Number(p.duration ?? 0)
+  const playing = !!p.is_playing && !p.is_paused
+  // Position as of the push, from Spotify's clock on both ends so local clock skew can't creep in.
+  const elapsed = playing
+    ? Number(c.server_timestamp_ms ?? p.timestamp ?? 0) - Number(p.timestamp ?? 0)
+    : 0
+  const device = c.devices?.[c.active_device_id]
+  return {
+    is_playing: playing,
+    progress_ms: Math.min(
+      Number(p.position_as_of_timestamp ?? 0) + Math.max(0, elapsed),
+      duration || Infinity
+    ),
+    shuffle_state: !!p.options?.shuffling_context,
+    repeat_state: p.options?.repeating_track
+      ? 'track'
+      : p.options?.repeating_context
+        ? 'context'
+        : 'off',
+    item: await trackFor(p.track.uri, p.track.metadata, duration),
+    device: {
+      id: c.active_device_id,
+      name: device?.name ?? '',
+      // Connect volume runs 0-65535.
+      volume_percent: device?.volume == null ? null : Math.round(device.volume / 655.35)
+    }
+  }
+}
+
+// Interpolates playback position between pushes.
 export function progressAt(state: PlaybackState, syncedAt: number, now = Date.now()): number {
   const base = state.progress_ms ?? 0
   const elapsed = state.is_playing ? now - syncedAt : 0

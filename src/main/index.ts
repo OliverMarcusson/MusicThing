@@ -11,6 +11,7 @@ import {
   queue as connectQueue,
   skipBy as connectSkipBy,
   skipTo as connectSkipTo,
+  watch as connectWatch,
   type QueueRef
 } from './connect'
 import type { UpdateStatus } from '../preload'
@@ -118,6 +119,9 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
   ipcMain.handle('connect:skipBy', (_, n: number, uri: string) => connectSkipBy(n, uri))
+  ipcMain.handle('connect:watch', () =>
+    connectWatch((c) => mainWindow?.webContents.send('connect:cluster', c))
+  )
   ipcMain.handle('update:status', () => update)
   ipcMain.handle('update:check', () => checkNow())
   ipcMain.handle('update:install', () => update === 'ready' && autoUpdater.quitAndInstall())

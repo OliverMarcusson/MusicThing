@@ -1,10 +1,14 @@
 import { randomBytes } from 'crypto'
+import { gunzipSync } from 'zlib'
 import { SignedOut, webAuth } from './webplayer'
 
 /**
  * Queue editing through Spotify Connect's private API, the one the official apps use; the Web API
  * can only append to the queue. Commands need a sending device, so a hidden one that never plays
  * is registered on a dealer socket. Auth is the signed-in web player's (see webplayer.ts).
+ *
+ * The same socket pushes the playback state whenever it changes (`watch`), which is how the
+ * player follows playback without polling the Web API's /me/player.
  *
  * Can break whenever Spotify changes the protocol.
  */
@@ -23,13 +27,65 @@ const REGISTER = {
 }
 
 type QueueItem = { uri: string; uid: string; provider?: string; metadata?: Record<string, string> }
-type Cluster = {
+/** Spotify's view of playback across devices. Longs arrive as strings. */
+export type Cluster = {
   active_device_id: string
-  player_state: { queue_revision: string; next_tracks: QueueItem[]; prev_tracks: QueueItem[] }
+  server_timestamp_ms?: string
+  devices?: Record<string, { name: string; volume?: number }>
+  player_state: {
+    queue_revision: string
+    next_tracks: QueueItem[]
+    prev_tracks: QueueItem[]
+    track?: QueueItem
+    timestamp?: string
+    position_as_of_timestamp?: string
+    duration?: string
+    is_playing?: boolean
+    is_paused?: boolean
+    options?: {
+      shuffling_context?: boolean
+      repeating_context?: boolean
+      repeating_track?: boolean
+    }
+  }
 }
 export type ConnectResult<T> = { ok: T } | { error: 'signin' | 'failed'; message: string }
 
 class Unauthorized extends Error {}
+
+let watcher: ((c: Cluster) => void) | null = null
+let retry: ReturnType<typeof setTimeout> | undefined
+// Registering again is what resubscribes, after the socket drops or a registration fails.
+function resubscribe(): void {
+  clearTimeout(retry)
+  retry = setTimeout(async () => {
+    const r = await op(cluster)
+    if ('error' in r && r.error === 'failed') resubscribe()
+  }, 5000)
+}
+
+// Cluster pushes; big ones come gzipped and base64-encoded instead of as plain JSON.
+function onPush(msg: {
+  uri?: string
+  headers?: Record<string, string>
+  payloads?: unknown[]
+}): void {
+  if (msg.uri !== 'hm://connect-state/v1/cluster') return
+  for (const p of msg.payloads ?? []) {
+    try {
+      const raw = Buffer.from(String(p), 'base64')
+      const update =
+        typeof p === 'string'
+          ? JSON.parse(
+              String(msg.headers?.['Transfer-Encoding'] === 'gzip' ? gunzipSync(raw) : raw)
+            )
+          : p
+      if (update?.cluster) watcher?.(update.cluster)
+    } catch (err) {
+      console.error('Unreadable Spotify Connect push:', err)
+    }
+  }
+}
 
 // The dealer socket's first message carries the connection id that device registration needs.
 let connection: Promise<string> | null = null
@@ -42,12 +98,17 @@ function connect(token: string): Promise<string> {
       30_000
     )
     ws.onmessage = (e) => {
-      const id = JSON.parse(String(e.data)).headers?.['Spotify-Connection-Id']
+      const msg = JSON.parse(String(e.data))
+      const id = msg.headers?.['Spotify-Connection-Id']
       if (id) resolve(id)
+      else onPush(msg)
     }
     ws.onclose = () => {
       clearInterval(ping)
-      connection = null
+      if (dealer === ws) {
+        connection = null
+        if (watcher) resubscribe()
+      }
       reject(new Error('Spotify Connect closed the connection'))
     }
     dealer = ws
@@ -79,7 +140,9 @@ async function cluster(): Promise<Cluster> {
     headers: { 'x-spotify-connection-id': id },
     body: JSON.stringify(REGISTER)
   })
-  return res.json()
+  const c: Cluster = await res.json()
+  watcher?.(c)
+  return c
 }
 
 async function send(c: Cluster, command: Record<string, unknown>): Promise<Response> {
@@ -125,6 +188,20 @@ function op<T>(fn: () => Promise<T>): Promise<ConnectResult<T>> {
   const result = chain.then(run)
   chain = result
   return result
+}
+
+/**
+ * Sends the playback state to `cb` now and on every change. Calling it again re-reads the state,
+ * which is also how a 'signin' result is retried after signing in.
+ */
+export async function watch(cb: (c: Cluster) => void): Promise<ConnectResult<true>> {
+  watcher = cb
+  const r = await op(async () => {
+    await cluster()
+    return true as const
+  })
+  if ('error' in r && r.error === 'failed') resubscribe()
+  return r
 }
 
 const isTrack = (t: QueueItem): boolean => /^spotify:(track|episode):/.test(t.uri)

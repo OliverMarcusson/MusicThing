@@ -29,13 +29,11 @@ export function Settings({
         <h1 className="mb-5 text-3xl font-semibold">Settings</h1>
         <Row
           label="Show version number"
-          description="In the title bar, next to the settings button."
           checked={settings.showVersion}
           onCheckedChange={(on) => onChange({ showVersion: on })}
         />
         <Row
           label="Play a playlist on startup"
-          description="Shuffled, when MusicThing starts and nothing is playing. Not after restarting to update, which picks up where you were."
           checked={settings.startupOn}
           onCheckedChange={(on) => onChange({ startupOn: on })}
         >
@@ -53,13 +51,11 @@ export function Settings({
 
 function Row({
   label,
-  description,
   checked,
   onCheckedChange,
   children
 }: {
   label: string
-  description: string
   checked: boolean
   onCheckedChange: (on: boolean) => void
   children?: React.ReactNode
@@ -67,12 +63,11 @@ function Row({
   const id = useId()
   return (
     <section className="border-b py-4 last:border-b-0">
-      <div className="flex items-start gap-6">
-        <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
-          <span className="block text-sm font-medium">{label}</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
+      <div className="flex items-center gap-6">
+        <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-sm font-medium">
+          {label}
         </label>
-        <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} className="mt-0.5" />
+        <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
       </div>
       {children && <div className="mt-3">{children}</div>}
     </section>

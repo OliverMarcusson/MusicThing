@@ -90,10 +90,12 @@ export function Devices({ player }: { player: Player }): React.JSX.Element {
                 <li key={d.id}>
                   <button
                     type="button"
-                    disabled={current}
+                    // The current one stays clickable: after a restart Spotify can list a player as
+                    // playing that has nothing loaded, and moving playback to it again fixes that.
+                    title={current ? 'Play here again' : undefined}
                     onClick={() => player.transfer(d.id)}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:hover:bg-transparent',
+                      'flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50',
                       current && 'text-art'
                     )}
                   >

@@ -56,7 +56,7 @@ export type ConnectResult<T> = { ok: T } | { error: 'signin' | 'failed'; message
 class Unauthorized extends Error {}
 
 let watcher: ((c: Cluster) => void) | null = null
-let jamWatcher: (() => void) | null = null
+let jamWatcher: ((jam: Jam | null) => void) | null = null
 let retry: ReturnType<typeof setTimeout> | undefined
 // Registering again is what resubscribes, after the socket drops or a registration fails.
 function resubscribe(): void {
@@ -82,7 +82,10 @@ function onPush(msg: {
   payloads?: unknown[]
 }): void {
   // Jam changes are only a nudge; the session is read again (see `jam`).
-  if (msg.uri?.endsWith('social-connect/v2/session_update')) return jamWatcher?.()
+  if (msg.uri?.endsWith('social-connect/v2/session_update')) {
+    jam('current').then((r) => 'ok' in r && jamWatcher?.(r.ok))
+    return
+  }
   if (msg.uri !== 'hm://connect-state/v1/cluster') return
   for (const p of msg.payloads ?? []) {
     try {
@@ -163,6 +166,19 @@ async function send(
   command: Record<string, unknown>,
   to = c.active_device_id
 ): Promise<Response> {
+  // In a Jam, commands go through the session, which plays them for everyone; sent straight to a
+  // device, they'd change only that device's playback and split it off from the Jam.
+  if (inJam?.redirectCommands ?? inJam?.redirect_commands) {
+    const res = await call(
+      `/social-connect/v2/sessions/${encodeURIComponent(inJam.session_id)}/commands/from/${playerId(c) ?? DEVICE_ID}`,
+      { method: 'POST', body: JSON.stringify({ command }) }
+    ).catch((err) => {
+      // The Jam ended under us: play it as an ordinary command.
+      if (err instanceof Error && /answered (404|410)$/.test(err.message)) return (inJam = null)
+      throw err
+    })
+    if (res) return res
+  }
   try {
     return await call(`/connect-state/v1/player/command/from/${DEVICE_ID}/to/${to}`, {
       method: 'POST',
@@ -366,8 +382,14 @@ type Session = {
   session_id: string
   join_session_token: string
   is_session_owner?: boolean
+  // Spellings differ between the web player's reads; either means "send commands to the session".
+  redirectCommands?: boolean
+  redirect_commands?: boolean
   session_members?: { id: string; username?: string; display_name?: string; image_url?: string }[]
 }
+
+// The Jam as last read, which decides where player commands go (see `send`).
+let inJam: Session | null = null
 
 const toJam = (s: Session | null): Jam | null =>
   s && {
@@ -431,17 +453,20 @@ export const jam = (
   op(async () => {
     const c = await cluster()
     const here = (): string => `local_device_id=${player(c)}`
-    if (action === 'start') return toJam(await session('/v2/sessions/current_or_new?activate=true'))
+    if (action === 'start')
+      return toJam((inJam = await session('/v2/sessions/current_or_new?activate=true')))
     if (action === 'join') {
       const token = await joinToken(link ?? '')
       return toJam(
-        await session(`/v2/sessions/join/${token}?${here()}&playback_control=listen_and_control`, {
-          method: 'POST'
-        })
+        (inJam = await session(
+          `/v2/sessions/join/${token}?${here()}&playback_control=listen_and_control`,
+          { method: 'POST' }
+        ))
       )
     }
-    const current = await session('/v2/sessions/current')
+    const current = (inJam = await session('/v2/sessions/current'))
     if (action === 'leave' && current) {
+      inJam = null
       if (current.is_session_owner)
         await session(`/v3/sessions/${encodeURIComponent(current.session_id)}`, {
           method: 'DELETE'
@@ -452,17 +477,18 @@ export const jam = (
     return toJam(current)
   })
 
-// Quitting takes librespot, and with it the Jam's playback, away. Once it's back after a start, a
-// guest joins again to play here, and a host whose Jam stopped playing moves it here.
-let resumed = false
+// Quitting, or librespot dropping its connection, takes the Jam's playback away with the player.
+// Whenever the player comes back, a guest joins again to play here, and a host whose Jam stopped
+// playing moves it here.
+let playerSeen = false
 function emit(c: Cluster): void {
   watcher?.(c)
   const here = playerId(c)
-  if (resumed || !here) return
-  resumed = true
-  if (c.active_device_id === here) return
+  const back = !!here && !playerSeen
+  playerSeen = !!here
+  if (!back || c.active_device_id === here) return
   op(async () => {
-    const s = await session('/v2/sessions/current')
+    const s = (inJam = await session('/v2/sessions/current'))
     if (!s) return
     if (!s.is_session_owner)
       await session(
@@ -474,6 +500,6 @@ function emit(c: Cluster): void {
 }
 
 /** Calls `cb` whenever the Jam changes (someone joins, leaves, or it ends). */
-export const watchJam = (cb: () => void): void => {
+export const watchJam = (cb: (jam: Jam | null) => void): void => {
   jamWatcher = cb
 }

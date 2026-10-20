@@ -50,7 +50,7 @@ function useJam(open: boolean): {
   useEffect(() => {
     read()
   }, [open, read])
-  useEffect(() => window.api.onJamChanged(read), [read])
+  useEffect(() => window.api.onJamChanged(setJam), [])
   return { jam, problem, busy, run }
 }
 

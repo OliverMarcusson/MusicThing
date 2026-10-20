@@ -156,7 +156,7 @@ app.whenReady().then(() => {
   ipcMain.handle('connect:jam', (_, action: Parameters<typeof connectJam>[0], link?: string) =>
     connectJam(action, link)
   )
-  watchJam(() => mainWindow?.webContents.send('connect:jamChanged'))
+  watchJam((jam) => mainWindow?.webContents.send('connect:jamChanged', jam))
   ipcMain.handle('connect:watch', () =>
     connectWatch((c) => mainWindow?.webContents.send('connect:cluster', c))
   )

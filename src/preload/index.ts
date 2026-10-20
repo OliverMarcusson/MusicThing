@@ -29,8 +29,8 @@ const api = {
     link?: string
   ): Promise<ConnectResult<Jam | null>> => ipcRenderer.invoke('connect:jam', action, link),
   /** Calls back when the Jam changes; returns the unsubscribe. */
-  onJamChanged: (cb: () => void): (() => void) => {
-    const listener = (): void => cb()
+  onJamChanged: (cb: (jam: Jam | null) => void): (() => void) => {
+    const listener = (_: unknown, jam: Jam | null): void => cb(jam)
     ipcRenderer.on('connect:jamChanged', listener)
     return () => ipcRenderer.removeListener('connect:jamChanged', listener)
   },

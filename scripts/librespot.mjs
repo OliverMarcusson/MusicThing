@@ -1,10 +1,13 @@
-// Builds librespot into resources/librespot (needs cargo), with two crates patched:
+// Builds librespot into resources/librespot (needs cargo), with three crates patched:
 // - playback: preload the next track as soon as one starts playing instead of 30 s before it ends,
 //   so skipping ahead starts without a fetch. Upstream also waits for the playing track to finish
 //   downloading, which streaming only reaches near its end, so that condition goes too.
 // - core: accept commands whose logging_params is null. A Jam's song changes reach the host's
 //   player as a "transfer" sent that way, which upstream rejects as an unknown endpoint, so the
 //   player kept playing its own song.
+// - connect: trust the audio player's "playing" report after a pause. A quick pause then play has
+//   its "paused" report land after the play, which upstream takes but then ignores the "playing"
+//   one, so it thinks it's paused while the music plays, and ignores every pause after.
 import { execFileSync } from 'child_process'
 import {
   copyFileSync,
@@ -39,6 +42,14 @@ const PATCHES = {
       [
         ' as i64)\n                    && stream_loader_controller.range_to_end_available()\n                {',
         ' as i64)\n                {'
+      ]
+    ]
+  },
+  'librespot-connect': {
+    'src/spirc.rs': [
+      [
+        '}\n                    SpircPlayStatus::LoadingPlay { .. } | SpircPlayStatus::LoadingPause { .. } => {\n                        self.connect_state\n                            .update_position(position_ms,',
+        '}\n                    SpircPlayStatus::Paused { .. } | SpircPlayStatus::LoadingPlay { .. } | SpircPlayStatus::LoadingPause { .. } => {\n                        self.connect_state\n                            .update_position(position_ms,'
       ]
     ]
   },

@@ -1,22 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { ArrowDownToLine, Heart, History as HistoryIcon, Search as SearchIcon } from 'lucide-react'
+import {
+  ArrowDownToLine,
+  Heart,
+  History as HistoryIcon,
+  Search as SearchIcon,
+  Settings as SettingsIcon
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
 import { Search } from '@/components/Search'
+import { Settings } from '@/components/Settings'
 import { Sidebar } from '@/components/Sidebar'
 import { TrackList } from '@/components/TrackList'
 import { CoverFlow } from '@/components/CoverFlow'
 import { Intro } from '@/components/Intro'
 import { useArtAccent } from '@/lib/accent'
 import { usePlayer, type Player } from '@/lib/player'
+import { useSettings } from '@/lib/settings'
 import { imageUrl, Unauthorized, type Album, type Playlist, type Track } from '@/lib/spotify'
 
 export type View =
   | { kind: 'now' }
   | { kind: 'liked' }
   | { kind: 'history' }
+  | { kind: 'settings' }
   | { kind: 'playlist'; id: string; playlist: Playlist }
   | { kind: 'album'; id: string; album: Album }
 
@@ -90,6 +99,21 @@ function Shell({
 
   const [view, setView] = useState<View>({ kind: 'now' })
   const [searchOpen, setSearchOpen] = useState(false)
+  const [settings, updateSettings] = useSettings()
+
+  // The startup playlist, once MusicThing's player is up, on a fresh start with nothing playing
+  // anywhere (another device keeps what it's doing).
+  const playerUp = player.devices.some((d) => d.name === 'MusicThing')
+  const startupChecked = useRef(false)
+  useEffect(() => {
+    if (!playerUp || startupChecked.current) return
+    startupChecked.current = true
+    const pick = settings.startupOn ? settings.startup : null
+    window.api.freshStart().then((fresh) => {
+      if (fresh && pick && !player.playingAnywhere)
+        player.play({ context_uri: pick.uri, shuffle: true })
+    })
+  }, [playerUp, settings, player])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -149,9 +173,27 @@ function Shell({
                 <SearchIcon />
               </Button>
               {/* Just left of the caption buttons, whose width the window-controls overlay reports. */}
-              <span className="mt-1 ml-auto pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.75rem)] text-[11px] text-muted-foreground/60 tabular-nums select-none">
-                v{__APP_VERSION__}
-              </span>
+              <div className="ml-auto flex items-center gap-1.5 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)]">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Settings"
+                  aria-pressed={view.kind === 'settings'}
+                  title="Settings"
+                  className={cn(
+                    'size-7 [-webkit-app-region:no-drag]',
+                    view.kind === 'settings' ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                  onClick={() => setView({ kind: 'settings' })}
+                >
+                  <SettingsIcon />
+                </Button>
+                {settings.showVersion && (
+                  <span className="text-[11px] text-muted-foreground/60 tabular-nums select-none">
+                    v{__APP_VERSION__}
+                  </span>
+                )}
+              </div>
             </div>
             <main className="relative min-h-0 flex-1">
               {/* Faint wash of the cover's colour; kept inside main so it never meets the
@@ -172,6 +214,9 @@ function Shell({
                 >
                   {view.kind === 'now' && (
                     <NowView player={player} onSearch={() => setSearchOpen(true)} />
+                  )}
+                  {view.kind === 'settings' && (
+                    <Settings settings={settings} onChange={updateSettings} />
                   )}
                   {view.kind === 'liked' && (
                     <TrackList<{ track: Track | null }>

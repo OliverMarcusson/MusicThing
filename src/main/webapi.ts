@@ -165,7 +165,14 @@ async function connect<T>(result: Promise<ConnectResult<T>>): Promise<T> {
 }
 
 /** Connect's play command; a lone track plays as its own context, like the Web API's `uris`. */
-function play(contextUri: string, trackUri: string | undefined, to?: string): Promise<true> {
+// `shuffle` is MusicThing's own: the Web API can only shuffle what's already playing, which would
+// start on the context's first song.
+function play(
+  contextUri: string,
+  trackUri: string | undefined,
+  to?: string,
+  shuffle = false
+): Promise<true> {
   return connect(
     command(
       {
@@ -175,7 +182,7 @@ function play(contextUri: string, trackUri: string | undefined, to?: string): Pr
         options: {
           license: 'on-demand',
           skip_to: trackUri ? { track_uri: trackUri } : {},
-          player_options_override: {}
+          player_options_override: shuffle ? { shuffling_context: true } : {}
         }
       },
       to
@@ -324,7 +331,7 @@ async function route(
           body.context_uri === 'spotify:collection:tracks'
             ? `spotify:user:${(await profile()).id}:collection`
             : body.context_uri
-        return play(uri, body.offset?.uri, to)
+        return play(uri, body.offset?.uri, to, !!body.shuffle)
       }
       if (body?.uris?.length) {
         const uri = body.offset?.uri ?? body.uris[0]

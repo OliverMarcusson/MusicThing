@@ -42,6 +42,8 @@ const api = {
     ipcRenderer.on('connect:cluster', listener)
     return () => ipcRenderer.removeListener('connect:cluster', listener)
   },
+  /** True once per app run, on a fresh start: not a resumed restart or one an invite link caused. */
+  freshStart: (): Promise<boolean> => ipcRenderer.invoke('app:freshStart'),
   updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
   /** Calls back whenever the update status changes; returns the unsubscribe. */
   onUpdateStatus: (cb: (status: UpdateStatus) => void): (() => void) => {

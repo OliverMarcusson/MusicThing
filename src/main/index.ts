@@ -67,6 +67,9 @@ let install = (): void => {
 // one a start stays quiet. The installer can take a while, hence the generous window.
 const resumeMarker = (): string => join(app.getPath('userData'), 'resume-playback')
 const RESUME_WITHIN_MS = 5 * 60_000
+// A start that resumes playback, or that an invite link caused, isn't fresh; the settings page's
+// startup playlist only plays on a fresh one, and only once (not on every window reload).
+let freshStart = true
 async function restart(then: () => void): Promise<void> {
   // A slow or failed pause mustn't hold the restart up.
   const paused = await Promise.race([
@@ -174,6 +177,7 @@ if (is.dev) app.setAsDefaultProtocolClient('spotify', process.execPath, [resolve
 else app.setAsDefaultProtocolClient('spotify')
 
 async function openLink(url: string): Promise<void> {
+  freshStart = false
   showWindow()
   if (!/socialsession/i.test(url)) return
   // Opened by the link, the app has to wait for its player before it can join with it.
@@ -231,12 +235,20 @@ app.whenReady().then(() => {
   ipcMain.handle('connect:watch', () =>
     connectWatch((c) => mainWindow?.webContents.send('connect:cluster', c))
   )
+  ipcMain.handle('app:freshStart', () => {
+    const fresh = freshStart
+    freshStart = false
+    return fresh
+  })
   ipcMain.handle('update:status', () => update)
   ipcMain.handle('update:check', () => checkNow())
   ipcMain.handle('update:install', () => update === 'ready' && restart(() => install()))
 
   try {
-    if (Date.now() - statSync(resumeMarker()).mtimeMs < RESUME_WITHIN_MS) resumeAfterRestart()
+    if (Date.now() - statSync(resumeMarker()).mtimeMs < RESUME_WITHIN_MS) {
+      resumeAfterRestart()
+      freshStart = false
+    }
     rmSync(resumeMarker())
   } catch {
     // No marker: an ordinary start.

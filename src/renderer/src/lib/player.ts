@@ -24,6 +24,8 @@ export function usePlayer() {
   const deviceId = useRef<string | null>(null)
   // Spotify Connect devices the user can play on, from the latest push.
   const [devices, setDevices] = useState<{ id: string; name: string; type?: string }[]>([])
+  // Whether any device is playing, known with the devices (state waits on track details).
+  const [playingAnywhere, setPlayingAnywhere] = useState(false)
   // Which skip button was pressed last. Track ids alone can't tell next from previous when a
   // playlist repeats (A → B → A looks like "back" either way), so views read this instead.
   const lastSkip = useRef<{ dir: 'next' | 'previous'; at: number } | null>(null)
@@ -144,6 +146,9 @@ export function usePlayer() {
           .filter(([, d]) => d.name)
           .map(([id, d]) => ({ id, name: d.name, type: d.device_type }))
       )
+      setPlayingAnywhere(
+        !!c.active_device_id && !!c.player_state?.is_playing && !c.player_state.is_paused
+      )
       const next = await toState(c)
       if (seq !== latest.current) return
       const wait = awaiting.current
@@ -261,6 +266,7 @@ export function usePlayer() {
   return {
     skipBy,
     devices,
+    playingAnywhere,
     /** Moves playback to another Connect device; the push that follows shows it. */
     transfer: async (id: string) => {
       const r = await window.api.connectTransfer(id)
@@ -299,7 +305,7 @@ export function usePlayer() {
     /** Start a track inside a playlist/album context, or from an explicit list of track URIs. */
     play: async (
       target:
-        | { context_uri: string; offset?: { uri: string } }
+        | { context_uri: string; offset?: { uri: string }; shuffle?: boolean }
         | { uris: string[]; offset: { uri: string } }
     ) => {
       const id = await device()

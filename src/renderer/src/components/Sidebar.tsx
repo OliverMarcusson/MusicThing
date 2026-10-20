@@ -1,6 +1,16 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, Reorder, useReducedMotion, type Variants } from 'motion/react'
-import { Disc3, Eye, EyeOff, Heart, ListMusic, Pencil, Pin, PinOff } from 'lucide-react'
+import {
+  ChevronRight,
+  Disc3,
+  Eye,
+  EyeOff,
+  Heart,
+  ListMusic,
+  Pencil,
+  Pin,
+  PinOff
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
@@ -169,8 +179,14 @@ type ListProps = {
   onSelect: (view: View) => void
 }
 
-type Prefs = { hidden: string[]; pinned: Playlist[]; names: Record<string, string> }
-const NO_PREFS: Prefs = { hidden: [], pinned: [], names: {} }
+type Prefs = {
+  hidden: string[]
+  pinned: Playlist[]
+  names: Record<string, string>
+  /** The unpinned playlists are folded away under their header. */
+  collapsed: boolean
+}
+const NO_PREFS: Prefs = { hidden: [], pinned: [], names: {}, collapsed: false }
 
 /** Hidden, pinned and renamed playlists: MusicThing's own, kept on this machine, not on Spotify. */
 function usePlaylistPrefs(): [Prefs, React.Dispatch<React.SetStateAction<Prefs>>] {
@@ -209,6 +225,7 @@ function PlaylistList({
   const pinned = new Set(prefs.pinned.map((p) => p.id))
   const hidden = new Set(prefs.hidden)
   const pinnedRows = prefs.pinned.map((p) => loadedById.get(p.id) ?? p)
+  const folded = pinnedRows.length > 0 && prefs.collapsed
   const rows = [...loadedById.values()].filter(
     (p) => !pinned.has(p.id) && (showHidden || !hidden.has(p.id))
   )
@@ -278,8 +295,31 @@ function PlaylistList({
           </Reorder.Item>
         ))}
       </Reorder.Group>
+      {/* With pins, the rest fold away under one header; the choice is kept with the pins. */}
+      {pinnedRows.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={!folded}
+          className="mt-1 w-full justify-start gap-3 px-2.5 text-xs text-muted-foreground"
+          onClick={() => {
+            setAction('fold')
+            setPrefs((s) => ({ ...s, collapsed: !s.collapsed }))
+          }}
+        >
+          {/* Cover-wide, so the chevron centres in the collapsed rail like the covers above. */}
+          <span className="grid w-9 shrink-0 place-items-center">
+            <ChevronRight
+              className={cn('transition-transform duration-200', !folded && 'rotate-90')}
+            />
+          </span>
+          <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
+            Other playlists
+          </span>
+        </Button>
+      )}
       <AnimatePresence initial={false} custom={action}>
-        {rows.map((p, i) => (
+        {(folded ? [] : rows).map((p, i) => (
           <motion.div
             key={p.id}
             layoutId={p.id}
@@ -294,7 +334,7 @@ function PlaylistList({
           </motion.div>
         ))}
       </AnimatePresence>
-      {prefs.hidden.length > 0 && (
+      {prefs.hidden.length > 0 && !folded && (
         <Button
           variant="ghost"
           size="sm"

@@ -87,9 +87,16 @@ function createTray(): void {
       Menu.buildFromTemplate([
         { label: 'Open', click: showWindow },
         { type: 'separator' },
-        ...(update === 'ready'
-          ? [{ label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }]
-          : []),
+        // With an update downloaded, restarting installs it.
+        update === 'ready'
+          ? { label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }
+          : {
+              label: 'Restart',
+              click: () => {
+                app.relaunch()
+                app.quit()
+              }
+            },
         { label: 'Quit', click: () => app.quit() }
       ])
     )

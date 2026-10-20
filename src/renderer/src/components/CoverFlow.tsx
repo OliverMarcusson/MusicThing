@@ -34,6 +34,8 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   const size = useCoverSize()
   const fetched = useQueue(player, true)
   const { history, pos } = player
+  // Repeating one song, it's the only cover: the rest won't play until repeat is changed.
+  const one = player.state?.repeat_state === 'track'
 
   // The queue is refetched after each track change, so for a moment it still describes the old
   // track. Remember what it was fetched against, and patch it up until it refreshes.
@@ -43,16 +45,18 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   const stale = snap.track && track && snap.track.uri !== track.uri
   const ahead = queue.findIndex((t) => t.uri === track?.uri)
   const upcoming = (
-    !stale
-      ? queue
-      : pos < snap.pos
-        ? // Went back: the tracks stepped over, then the one we left, are next again.
-          [...snap.history.slice(history.length + 1), snap.track!, ...queue]
-        : ahead >= 0
-          ? queue.slice(ahead + 1) // went forward into the queue
-          : queue
+    one
+      ? []
+      : !stale
+        ? queue
+        : pos < snap.pos
+          ? // Went back: the tracks stepped over, then the one we left, are next again.
+            [...snap.history.slice(history.length + 1), snap.track!, ...queue]
+          : ahead >= 0
+            ? queue.slice(ahead + 1) // went forward into the queue
+            : queue
   ).slice(0, REACH)
-  const behind = history.slice(-REACH)
+  const behind = one ? [] : history.slice(-REACH)
   const items = [
     ...behind.map((t, i) => ({ t, offset: i - behind.length })),
     ...(track ? [{ t: track, offset: 0 }] : []),

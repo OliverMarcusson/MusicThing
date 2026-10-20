@@ -420,8 +420,9 @@ async function toState(c: Cluster): Promise<PlaybackState | null> {
     device: {
       id: c.active_device_id,
       name: device?.name ?? '',
-      // Connect volume runs 0-65535.
-      volume_percent: device?.volume == null ? null : Math.round(device.volume / 655.35)
+      // Connect volume runs 0-65535, and a muted device's is left out (zeroes are), which mustn't
+      // read as a device without volume control: that disabled the slider at 0, stuck muted.
+      volume_percent: device ? Math.round((device.volume ?? 0) / 655.35) : null
     }
   }
 }

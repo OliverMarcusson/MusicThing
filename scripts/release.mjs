@@ -22,7 +22,8 @@ if (local) {
   // The release is tagged at HEAD, so it must be built from exactly HEAD.
   if (out('git', ['status', '--porcelain', '--untracked-files=no', '--ignore-submodules']))
     throw new Error('Commit or stash your changes first: the release is tagged at HEAD.')
-  run('bun', ['run', 'build:win'])
+  // Through a shell: on Windows bun can be an npm .cmd shim, which can't be spawned directly.
+  execFileSync('bun run build:win', { stdio: 'inherit', shell: true })
   run('node', ['scripts/build-linux.mjs'])
 }
 

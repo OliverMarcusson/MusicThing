@@ -67,6 +67,14 @@ function resubscribe(): void {
   }, 5000)
 }
 
+// Spotify leaves out empty queue lists, as in a Jam with nothing queued.
+function filled(c: Cluster): Cluster {
+  c.player_state ??= {} as Cluster['player_state']
+  c.player_state.next_tracks ??= []
+  c.player_state.prev_tracks ??= []
+  return c
+}
+
 // Cluster pushes; big ones come gzipped and base64-encoded instead of as plain JSON.
 function onPush(msg: {
   uri?: string
@@ -85,7 +93,7 @@ function onPush(msg: {
               String(msg.headers?.['Transfer-Encoding'] === 'gzip' ? gunzipSync(raw) : raw)
             )
           : p
-      if (update?.cluster) watcher?.(update.cluster)
+      if (update?.cluster) watcher?.(filled(update.cluster))
     } catch (err) {
       console.error('Unreadable Spotify Connect push:', err)
     }
@@ -145,7 +153,7 @@ async function cluster(): Promise<Cluster> {
     headers: { 'x-spotify-connection-id': id },
     body: JSON.stringify(REGISTER)
   })
-  const c: Cluster = await res.json()
+  const c = filled(await res.json())
   watcher?.(c)
   return c
 }

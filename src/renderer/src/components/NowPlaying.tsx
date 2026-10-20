@@ -106,9 +106,9 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
           variant="ghost"
           size="icon-sm"
           aria-label="Previous"
-          // Nothing to go back to before the first track played this session.
-          disabled={!state || player.history.length === 0}
-          onClick={player.previous}
+          // On the first track played this session there's nothing to go back to: restart it.
+          disabled={!state}
+          onClick={() => (player.history.length ? player.previous() : player.seek(0))}
         >
           <SkipBack className="fill-current" />
         </Button>

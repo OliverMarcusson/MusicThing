@@ -366,7 +366,8 @@ const toJam = (s: Session | null): Jam | null =>
     members: (s.session_members ?? []).map((m) => ({
       id: m.id,
       name: m.display_name || m.username || 'Someone',
-      image: m.image_url || undefined
+      // Some come as spotify:image:<id>, like Connect's cover art.
+      image: m.image_url?.replace(/^spotify:image:/, 'https://i.scdn.co/image/') || undefined
     }))
   }
 

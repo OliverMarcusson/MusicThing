@@ -116,13 +116,18 @@ export function Devices({ player }: { player: Player }): React.JSX.Element {
               <ul className="mb-3 flex flex-col gap-2">
                 {jam.members.map((m) => (
                   <li key={m.id} className="flex items-center gap-2 text-sm">
-                    {m.image ? (
-                      <img src={m.image} alt="" className="size-6 rounded-full" />
-                    ) : (
-                      <span className="grid size-6 place-items-center rounded-full bg-muted text-xs">
-                        {m.name[0]}
-                      </span>
-                    )}
+                    {/* The initial shows until the picture loads, and stays if it can't. */}
+                    <span className="relative grid size-6 shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-xs">
+                      {m.name[0]}
+                      {m.image && (
+                        <img
+                          src={m.image}
+                          alt=""
+                          className="absolute inset-0 size-full object-cover"
+                          onError={(e) => (e.currentTarget.hidden = true)}
+                        />
+                      )}
+                    </span>
                     <span className="truncate">{m.name}</span>
                   </li>
                 ))}

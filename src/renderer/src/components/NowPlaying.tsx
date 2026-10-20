@@ -22,6 +22,7 @@ import { clock, cn } from '@/lib/utils'
 const VOLUME_THROTTLE_MS = 150
 // What unmuting restores when the app started muted, so there's no earlier level to go back to.
 const UNMUTE_PERCENT = 50
+const VOLUME_SETTLE_MS = 1500
 // Repeat cycles like Spotify's: off, the whole playlist or album, then the current song.
 const NEXT_REPEAT = { off: 'context', context: 'track', track: 'off' } as const
 
@@ -201,11 +202,19 @@ export function Extras({
   const volumeSentAt = useRef(0)
   const canVolume = state?.device.volume_percent != null
   const level = volume ?? state?.device.volume_percent ?? 0
-  // The last level above zero, which the mute button goes back to.
+  // The level the mute button goes back to: the last one muted from or let go of on the slider,
+  // not one passed on the way down to zero.
   const audible = useRef(UNMUTE_PERCENT)
-  useEffect(() => {
-    if (level > 0) audible.current = level
-  }, [level])
+  // A level set here stays shown a moment after, while Spotify echoes the levels sent before it,
+  // which would otherwise make the slider jump back and forth.
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const set = (v: number): void => {
+    if (v > 0) audible.current = v
+    setVolume(v)
+    clearTimeout(settle.current)
+    settle.current = setTimeout(() => setVolume(null), VOLUME_SETTLE_MS)
+    player.setVolume(v)
+  }
 
   return (
     <div
@@ -226,7 +235,10 @@ export function Extras({
         aria-label={level ? 'Mute' : 'Unmute'}
         title={level ? 'Mute' : 'Unmute'}
         disabled={!canVolume}
-        onClick={() => player.setVolume(level ? 0 : audible.current)}
+        onClick={() => {
+          if (level) audible.current = level
+          set(level ? 0 : audible.current)
+        }}
       >
         {level ? <Volume2 /> : <VolumeX />}
       </Button>
@@ -237,16 +249,14 @@ export function Extras({
         value={[level]}
         onValueChange={([v]) => {
           setVolume(v)
+          clearTimeout(settle.current)
           // Live feedback while dragging, throttled to stay under the API rate limit.
           if (Date.now() - volumeSentAt.current > VOLUME_THROTTLE_MS) {
             volumeSentAt.current = Date.now()
             player.setVolume(v)
           }
         }}
-        onValueCommit={([v]) => {
-          setVolume(null)
-          player.setVolume(v)
-        }}
+        onValueCommit={([v]) => set(v)}
       />
     </div>
   )

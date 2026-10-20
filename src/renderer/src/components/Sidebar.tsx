@@ -217,7 +217,9 @@ function PlaylistList({
 
   // Pins come first, in the order pinned, and are saved whole so they show before their page
   // loads; the loaded copy wins once it's in. Hidden ones get their own list at the bottom.
-  const loadedById = new Map(items.filter(Boolean).map((p) => [p.id, p]))
+  // Entries Spotify can no longer resolve (deleted or unavailable) arrive without an id; they
+  // can't be opened, and a null id would match "not renaming" and show a rename box.
+  const loadedById = new Map(items.filter((p) => p?.id).map((p) => [p.id, p]))
   const pinned = new Set(prefs.pinned.map((p) => p.id))
   const hidden = new Set(prefs.hidden)
   const pinnedRows = prefs.pinned.map((p) => loadedById.get(p.id) ?? p)
@@ -513,17 +515,19 @@ function AlbumList({ isActive, onSelect }: ListProps): React.JSX.Element {
   const { items, error, sentinel } = usePaged<{ album: Album }>('/me/albums?limit=50')
   return (
     <Scroller>
-      {items.map(({ album: a }, i) => (
-        <Row
-          key={a.id}
-          index={i}
-          active={isActive('album', a.id)}
-          onClick={() => onSelect({ kind: 'album', id: a.id, album: a })}
-        >
-          <Cover images={a.images} />
-          <Label title={a.name} subtitle={a.artists.map((x) => x.name).join(', ')} />
-        </Row>
-      ))}
+      {items
+        .filter(({ album: a }) => a?.id)
+        .map(({ album: a }, i) => (
+          <Row
+            key={a.id}
+            index={i}
+            active={isActive('album', a.id)}
+            onClick={() => onSelect({ kind: 'album', id: a.id, album: a })}
+          >
+            <Cover images={a.images} />
+            <Label title={a.name} subtitle={a.artists.map((x) => x.name).join(', ')} />
+          </Row>
+        ))}
       <ListEnd error={error} />
       <div ref={sentinel} />
     </Scroller>

@@ -14,8 +14,12 @@ if (app.isPackaged) {
   let version = ''
   // Electron reads .asar paths as folders; these renames and deletes are on the files themselves.
   process.noAsar = true
+  // Either file can still be held open by a copy of the app that's closing (the installer starts
+  // the new one right away); that waits for the next start rather than stopping this one.
   try {
     if (existsSync(join(dir, 'next.asar'))) renameSync(join(dir, 'next.asar'), asar)
+  } catch {
+    // Swapped in next start.
   } finally {
     process.noAsar = false
   }
@@ -28,8 +32,13 @@ if (app.isPackaged) {
     main = join(asar, 'out/main/index.js')
   else {
     process.noAsar = true
-    rmSync(asar, { force: true })
-    process.noAsar = false
+    try {
+      rmSync(asar, { force: true })
+    } catch {
+      // Removed next start.
+    } finally {
+      process.noAsar = false
+    }
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- the path is only known now

@@ -8,6 +8,7 @@ import { Search } from '@/components/Search'
 import { Sidebar } from '@/components/Sidebar'
 import { TrackList } from '@/components/TrackList'
 import { CoverFlow } from '@/components/CoverFlow'
+import { Intro } from '@/components/Intro'
 import { useArtAccent } from '@/lib/accent'
 import { usePlayer, type Player } from '@/lib/player'
 import { imageUrl, Unauthorized, type Album, type Playlist, type Track } from '@/lib/spotify'
@@ -28,9 +29,13 @@ export default function App(): React.JSX.Element | null {
     )
   }, [])
 
-  if (authed === null) return null
-  if (!authed) return <Login onDone={() => setAuthed(true)} />
-  return <Shell onSignedOut={() => setAuthed(false)} />
+  return (
+    <>
+      <Intro />
+      {authed === false && <Login onDone={() => setAuthed(true)} />}
+      {authed && <Shell onSignedOut={() => setAuthed(false)} />}
+    </>
+  )
 }
 
 function Login({ onDone }: { onDone: () => void }): React.JSX.Element {

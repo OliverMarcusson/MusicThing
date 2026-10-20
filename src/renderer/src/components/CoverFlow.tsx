@@ -61,6 +61,16 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   // The covers on the flow's first render, by key; any other cover arrived later and glides in.
   const [firstKeys] = useState(() => new Set(items.map(({ offset }) => pos + offset)))
 
+  // Starting another playlist or album clears the history, which would drop the old centre cover
+  // on the spot. Keep it for one more move instead: it slides left with the flow, then fades.
+  const [center, setCenter] = useState(track && { t: track, key: pos })
+  const [leaving, setLeaving] = useState<{ t: Track; key: number } | null>(null)
+  if (track && center?.key !== pos) {
+    if (center && center.key < pos && !items.some((i) => pos + i.offset === center.key))
+      setLeaving(center)
+    setCenter({ t: track, key: pos })
+  }
+
   // Drag in cover slots: -1 means the next cover sits in the centre.
   const drag = useMotionValue(0)
   // Where the flow is headed, in slots from the playing track; not yet confirmed by Spotify.
@@ -195,6 +205,18 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
           onSelect={() => goTo(offset)}
         />
       ))}
+      {leaving && (
+        <Cover
+          key={leaving.key}
+          track={leaving.t}
+          offset={leaving.key - pos}
+          drag={drag}
+          size={size}
+          late={false}
+          onSelect={() => {}}
+          onLeft={() => setLeaving(null)}
+        />
+      )}
     </motion.div>
   )
 }
@@ -205,7 +227,8 @@ function Cover({
   drag,
   size,
   late,
-  onSelect
+  onSelect,
+  onLeft
 }: {
   track: Track
   offset: number
@@ -214,7 +237,24 @@ function Cover({
   /** Arrived after the flow's first render (see below), so it glides in. */
   late: boolean
   onSelect: () => void
+  /** Makes this the leaving cover: it fades out as the flow settles, then this is called. */
+  onLeft?: () => void
 }): React.JSX.Element {
+  const leaving = !!onLeft
+  // The fade overlaps the end of the slide, so the two read as one movement.
+  const fade = useMotionValue(1)
+  useEffect(() => {
+    if (!onLeft) return
+    // A stopped animation (StrictMode's rerun stops the first) may still resolve; only a finished
+    // fade removes the cover.
+    let live = true
+    const fading = animate(fade, 0, { delay: 0.2, duration: 0.35, ease: 'easeOut' })
+    fading.then(() => live && onLeft())
+    return () => {
+      live = false
+      fading.stop()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // Slot jumps with the props; the parent shifts the drag in the same frame, so nothing moves.
   // A cover that turns up after the flow is on screen (the queue loads just after the track
   // appears) starts one slot further out, where it's still hidden, and glides in instead of
@@ -240,9 +280,9 @@ function Cover({
   const rotateY = useTransform(at, (v) => -clamp(v, -1, 1) * 60)
   const scale = useTransform(at, (v) => 1 - 0.16 * Math.min(Math.abs(v), 1))
   // Covers beyond the neighbours are hidden and fade in as they're dragged into view.
-  const opacity = useTransform(at, (v) => clamp((2 - Math.abs(v)) * 2, 0, 1))
+  const opacity = useTransform(() => clamp((2 - Math.abs(at.get())) * 2, 0, 1) * fade.get())
   const zIndex = useTransform(at, (v) => 50 - Math.round(Math.abs(v) * 10))
-  const pointerEvents = useTransform(at, (v) => (Math.abs(v) > 1.5 ? 'none' : 'auto'))
+  const pointerEvents = useTransform(at, (v) => (leaving || Math.abs(v) > 1.5 ? 'none' : 'auto'))
 
   // One image size for every slot, so a cover doesn't reload when it reaches the centre.
   const art = imageUrl(track.album?.images, 640)
@@ -250,8 +290,8 @@ function Cover({
   return (
     <motion.button
       type="button"
-      tabIndex={neighbour ? 0 : -1}
-      aria-hidden={!neighbour && offset !== 0}
+      tabIndex={neighbour && !leaving ? 0 : -1}
+      aria-hidden={leaving || (!neighbour && offset !== 0)}
       aria-label={offset === -1 ? 'Previous track' : offset === 1 ? 'Next track' : track.name}
       onClick={onSelect}
       className="absolute top-0 left-1/2 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"

@@ -15,6 +15,8 @@ const COMMIT_MS = 350
 const NEIGHBOUR = 0.62
 const STACK = 0.24
 const SPRING = { type: 'spring', stiffness: 220, damping: 30 } as const
+// Covers mounting this long after the flow did arrived later (see Cover) and glide in.
+const ENTER_AFTER_MS = 300
 // Native Chromium mirror under each cover; the gradient fades it out like the iPod's glossy floor.
 const REFLECTION = 'below 2px linear-gradient(transparent 62%, rgb(0 0 0 / 0.32))'
 
@@ -34,6 +36,7 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   const size = useCoverSize()
   const fetched = useQueue(player, true)
   const { history, pos } = player
+  const [flowSince] = useState(() => Date.now())
 
   // The queue is refetched after each track change, so for a moment it still describes the old
   // track. Remember what it was fetched against, and patch it up until it refreshes.
@@ -189,6 +192,7 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
           offset={offset}
           drag={drag}
           size={size}
+          flowSince={flowSince}
           onSelect={() => goTo(offset)}
         />
       ))}
@@ -201,17 +205,30 @@ function Cover({
   offset,
   drag,
   size,
+  flowSince,
   onSelect
 }: {
   track: Track
   offset: number
   drag: MotionValue<number>
   size: number
+  /** When the flow mounted; covers mounting with it don't glide in. */
+  flowSince: number
   onSelect: () => void
 }): React.JSX.Element {
   // Slot jumps with the props; the parent shifts the drag in the same frame, so nothing moves.
   const slot = useMotionValue(offset)
-  useLayoutEffect(() => slot.jump(offset), [offset, slot])
+  const mounted = useRef(false)
+  useLayoutEffect(() => {
+    // A cover that turns up after the flow is on screen (the queue loads a moment after the first
+    // track starts) glides in from one slot further out, where it's still hidden, instead of
+    // popping in. Covers there when the page opens just sit in place.
+    if (!mounted.current && offset && Date.now() - flowSince > ENTER_AFTER_MS) {
+      slot.jump(offset + Math.sign(offset))
+      animate(slot, offset, SPRING)
+    } else slot.jump(offset)
+    mounted.current = true
+  }, [offset, slot]) // eslint-disable-line react-hooks/exhaustive-deps
   const at = useTransform(() => slot.get() + drag.get())
 
   // Centre faces you; past one slot covers are fully edge-on and stack tighter, like the iPod.

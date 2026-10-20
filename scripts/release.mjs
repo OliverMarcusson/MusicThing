@@ -3,7 +3,8 @@
 // only offers a build whose version is higher than the installed one.
 // Usage: bun run release pushes the v<version> tag if it's missing, waits for CI to build it into a
 // GitHub Release, and uploads the Windows and Linux builds from there. `bun run release:local`
-// builds both here instead (Linux in Docker, build-linux.mjs), skipping the tag and CI.
+// builds both here instead (Linux in Docker, build-linux.mjs) and publishes them as the GitHub
+// Release itself; the tag's CI run still adds the macOS build to it later.
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
@@ -15,12 +16,42 @@ const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit' })
 
 const tag = `v${version}`
 const out = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' }).trim()
+const local = process.argv.includes('--local')
 
-if (!process.argv.includes('--local')) {
-  if (!out('git', ['ls-remote', '--tags', 'origin', tag])) {
-    run('git', ['tag', tag])
-    run('git', ['push', 'origin', tag])
+if (local) {
+  // The release is tagged at HEAD, so it must be built from exactly HEAD.
+  if (out('git', ['status', '--porcelain', '--untracked-files=no']))
+    throw new Error('Commit or stash your changes first: the release is tagged at HEAD.')
+  run('bun', ['run', 'build:win'])
+  run('node', ['scripts/build-linux.mjs'])
+}
+
+if (!out('git', ['ls-remote', '--tags', 'origin', tag])) {
+  run('git', ['tag', tag])
+  run('git', ['push', 'origin', tag])
+}
+
+const installer = `dist/${name}-${version}-setup.exe`
+const files = [
+  installer,
+  `${installer}.blockmap`,
+  'dist/latest.yml',
+  `dist/${name}-${version}.AppImage`,
+  `dist/${name}_${version}_amd64.deb`,
+  'dist/latest-linux.yml'
+]
+
+if (local) {
+  // Published before the tag's CI run gets that far, which then adds to it instead.
+  let exists = true
+  try {
+    out('gh', ['release', 'view', tag])
+  } catch {
+    exists = false
   }
+  if (exists) run('gh', ['release', 'upload', tag, ...files, '--clobber'])
+  else run('gh', ['release', 'create', tag, ...files, '--verify-tag', '--generate-notes'])
+} else {
   // The tag's CI run takes a few seconds to show up.
   let id
   while (
@@ -62,7 +93,6 @@ if (!process.argv.includes('--local')) {
 }
 
 // Files first, the latest*.yml manifests last, so clients never see a manifest for a missing file.
-const installer = `dist/${name}-${version}-setup.exe`
 run('scp', [
   installer,
   `${installer}.blockmap`,

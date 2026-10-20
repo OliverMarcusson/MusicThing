@@ -272,6 +272,8 @@ async function checkNow(): Promise<void> {
     const dir = join(app.getPath('userData'), 'update')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'next.tmp'), data)
+    // Beside it, so boot.ts can tell its version without opening it (see there).
+    writeFileSync(join(dir, 'next.version'), latest.version)
     // Electron reads .asar paths as folders; this one is a plain file until boot.ts loads it.
     process.noAsar = true
     try {

@@ -25,6 +25,10 @@ const UNMUTE_PERCENT = 50
 const VOLUME_SETTLE_MS = 1500
 // Repeat cycles like Spotify's: off, the whole playlist or album, then the current song.
 const NEXT_REPEAT = { off: 'context', context: 'track', track: 'off' } as const
+// On, shuffle and repeat take the cover's colour and a dot beneath, like Spotify's: a pale cover's
+// colour comes out grey, no different from off.
+const ON =
+  'text-art relative after:absolute after:bottom-0 after:left-1/2 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-current'
 
 export function NowPlaying({
   player,
@@ -102,7 +106,7 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
           title="Shuffle"
           disabled={!state}
           // On: the accent colour; off: muted, like the other secondary controls.
-          className={cn('mr-1', state?.shuffle_state ? 'text-art' : 'text-muted-foreground')}
+          className={cn('mr-1', state?.shuffle_state ? ON : 'text-muted-foreground')}
           onClick={() => state && player.setShuffle(!state.shuffle_state)}
         >
           <Shuffle />
@@ -163,7 +167,7 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
           disabled={!state}
           className={cn(
             'ml-1',
-            state && state.repeat_state !== 'off' ? 'text-art' : 'text-muted-foreground'
+            state && state.repeat_state !== 'off' ? ON : 'text-muted-foreground'
           )}
           onClick={() => state && player.setRepeat(NEXT_REPEAT[state.repeat_state])}
         >

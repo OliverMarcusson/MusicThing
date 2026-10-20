@@ -2,7 +2,7 @@
   "name": "musicthing",
   "version": "1.0.14",
   "description": "A minimalist Spotify client with Cover Flow",
-  "main": "./out/main/index.js",
+  "main": "./out/main/boot.js",
   "author": "Oliver Marcusson <oliver@marcusson.dev>",
   "homepage": "https://github.com/OliverMarcusson/MusicThing",
   "scripts": {

@@ -6,7 +6,8 @@
 // builds both here instead (Linux in Docker, build-linux.mjs) and publishes them as the GitHub
 // Release itself; the tag's CI run still adds the macOS build to it later.
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
 
 const HOST = 'root@192.168.0.67'
 const DIR = '/srv/compose/edge/sites/musicthing/'
@@ -25,6 +26,7 @@ if (local) {
   // Through a shell: on Windows bun can be an npm .cmd shim, which can't be spawned directly.
   execFileSync('bun run build:win', { stdio: 'inherit', shell: true })
   run('node', ['scripts/build-linux.mjs'])
+  copyFileSync('dist/win-unpacked/resources/app.asar', `dist/${name}-${version}.asar`)
 }
 
 if (!out('git', ['ls-remote', '--tags', 'origin', tag])) {
@@ -33,8 +35,10 @@ if (!out('git', ['ls-remote', '--tags', 'origin', tag])) {
 }
 
 const installer = `dist/${name}-${version}-setup.exe`
+const asar = `${name}-${version}.asar`
 const files = [
   installer,
+  `dist/${asar}`,
   `${installer}.blockmap`,
   'dist/latest.yml',
   `dist/${name}-${version}.AppImage`,
@@ -89,9 +93,25 @@ if (local) {
     '-p',
     '*.deb',
     '-p',
-    'latest-linux.yml'
+    'latest-linux.yml',
+    '-p',
+    asar
   ])
 }
+
+// What installed copies update to without the installer (src/main/index.ts), as long as they run
+// the same Electron; the app code is the same on every platform.
+writeFileSync(
+  'dist/app.json',
+  JSON.stringify({
+    version,
+    electron: JSON.parse(readFileSync('node_modules/electron/package.json', 'utf8')).version,
+    file: asar,
+    sha512: createHash('sha512')
+      .update(readFileSync(`dist/${asar}`))
+      .digest('base64')
+  })
+)
 
 // Files first, the latest*.yml manifests last, so clients never see a manifest for a missing file.
 run('scp', [
@@ -99,8 +119,9 @@ run('scp', [
   `${installer}.blockmap`,
   `dist/${name}-${version}.AppImage`,
   `dist/${name}_${version}_amd64.deb`,
+  `dist/${asar}`,
   'site/index.html',
   `${HOST}:${DIR}`
 ])
-run('scp', ['dist/latest.yml', 'dist/latest-linux.yml', `${HOST}:${DIR}`])
+run('scp', ['dist/latest.yml', 'dist/latest-linux.yml', 'dist/app.json', `${HOST}:${DIR}`])
 console.log(`Released ${version}`)

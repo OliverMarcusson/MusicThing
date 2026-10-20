@@ -32,9 +32,10 @@ bun run release    # build and upload to the update feed
 
 ## Releasing
 
-Installed copies check `https://musicthing.marcusson.dev/latest.yml` at start-up and every
-6 hours, download newer builds in the background, and install them on quit (or via the tray's
-"Restart to update"). To ship one:
+Installed copies check `https://musicthing.marcusson.dev/app.json` at start-up and every
+5 minutes and download the new app code (`app.asar`) in the background; the next start runs it
+(`src/main/boot.ts`), or right away via "Restart to update". Only a release on a different
+Electron goes through the installer (`latest.yml`, electron-updater), silently. To ship one:
 
 1. Bump `version` in `package.json` and commit.
 2. `bun run release`. It pushes the `v<version>` tag, waits for CI to build it into a GitHub

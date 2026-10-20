@@ -1,9 +1,9 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, session, Tray } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, net, session, Tray } from 'electron'
+import { createHash } from 'crypto'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
-import iconDark from '../../resources/icon-dark.png?asset'
-import iconLight from '../../resources/icon-light.png?asset'
 import { startPlayer, stopPlayer } from './librespot'
 import { getToken, login } from './webplayer'
 import { webApi } from './webapi'
@@ -20,12 +20,29 @@ import type { UpdateStatus } from '../preload'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
-// A downloaded update installs on the next quit, or now via the tray or the window's button.
+// A downloaded update applies on the next start, or now via the tray or the window's button.
 let update: UpdateStatus = 'none'
 const UPDATE_CHECK_MS = 5 * 60 * 1000
+// electron-builder.yml `publish`; scripts/release.mjs uploads to it.
+const FEED = 'https://musicthing.marcusson.dev/'
+// The running code's version. app.getVersion() is the installed copy's, which boot.ts may have
+// replaced with newer code.
+const version: string = JSON.parse(
+  readFileSync(join(__dirname, '../../package.json'), 'utf8')
+).version
+// New app code is picked up by boot.ts on any start; an installer update needs the installer run.
+let install = (): void => {
+  app.relaunch()
+  app.quit()
+}
 
-// Off-white lines on a dark taskbar, grey on a light one.
-const icon = (): string => (nativeTheme.shouldUseDarkColors ? iconDark : iconLight)
+// Off-white lines on a dark taskbar, grey on a light one. From the installed copy: code that
+// boot.ts loads from userData has no unpacked resources/ beside it.
+const icon = (): string =>
+  join(
+    app.getAppPath(),
+    nativeTheme.shouldUseDarkColors ? 'resources/icon-dark.png' : 'resources/icon-light.png'
+  )
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -87,9 +104,9 @@ function createTray(): void {
       Menu.buildFromTemplate([
         { label: 'Open', click: showWindow },
         { type: 'separator' },
-        // With an update downloaded, restarting installs it.
+        // With an update downloaded, restarting applies it.
         update === 'ready'
-          ? { label: 'Restart to update', click: () => autoUpdater.quitAndInstall() }
+          ? { label: 'Restart to update', click: () => install() }
           : {
               label: 'Restart',
               click: () => {
@@ -137,7 +154,7 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('update:status', () => update)
   ipcMain.handle('update:check', () => checkNow())
-  ipcMain.handle('update:install', () => update === 'ready' && autoUpdater.quitAndInstall())
+  ipcMain.handle('update:install', () => update === 'ready' && install())
 
   createWindow()
   createTray()
@@ -145,25 +162,61 @@ app.whenReady().then(() => {
   startPlayer()
 })
 
-// Installed builds poll the homelab feed (electron-builder.yml `publish`) and download in the
-// background; a dev run has no feed to compare against. Ctrl+U in the window checks right away.
+const setUpdate = (status: UpdateStatus): void => {
+  update = status
+  mainWindow?.webContents.send('update:status', status)
+}
+
+// Installed builds poll the homelab feed and download in the background; a dev run has no feed to
+// compare against. Ctrl+U in the window checks right away.
 function checkForUpdates(): void {
   if (!app.isPackaged) return
-  const set = (status: UpdateStatus): void => {
-    update = status
-    mainWindow?.webContents.send('update:status', status)
-  }
-  autoUpdater.on('update-available', () => set('downloading'))
-  autoUpdater.on('update-downloaded', () => set('ready'))
+  autoUpdater.on('update-available', () => setUpdate('downloading'))
+  autoUpdater.on('update-downloaded', () => {
+    // Silent, and the updated app opens again by itself.
+    install = () => autoUpdater.quitAndInstall(true, true)
+    setUpdate('ready')
+  })
   // A failed download is offered again by the next check.
-  autoUpdater.on('error', () => update === 'downloading' && set('none'))
+  autoUpdater.on('error', () => update === 'downloading' && setUpdate('none'))
   checkNow()
   setInterval(checkNow, UPDATE_CHECK_MS)
 }
 
+// The feed's app.json describes the latest app code. Built for this Electron, it's downloaded for
+// boot.ts to run on the next start; otherwise the full installer is needed, through electron-updater.
 // Offline or feed down: try again next round. Once one is downloaded there's nothing to look for.
-function checkNow(): void {
-  if (app.isPackaged && update === 'none') autoUpdater.checkForUpdates().catch(() => {})
+async function checkNow(): Promise<void> {
+  if (!app.isPackaged || update !== 'none') return
+  try {
+    const latest: { version: string; electron: string; file: string; sha512: string } = await (
+      await net.fetch(`${FEED}app.json`, { cache: 'no-store' })
+    ).json()
+    if (latest.version.localeCompare(version, undefined, { numeric: true }) <= 0) return
+    if (latest.electron !== process.versions.electron) {
+      await autoUpdater.checkForUpdates()
+      return
+    }
+    setUpdate('downloading')
+    const res = await net.fetch(FEED + latest.file)
+    if (!res.ok) throw new Error(`${latest.file} answered ${res.status}`)
+    const data = Buffer.from(await res.arrayBuffer())
+    if (createHash('sha512').update(data).digest('base64') !== latest.sha512)
+      throw new Error(`${latest.file} doesn't match its checksum`)
+    const dir = join(app.getPath('userData'), 'update')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'next.tmp'), data)
+    // Electron reads .asar paths as folders; this one is a plain file until boot.ts loads it.
+    process.noAsar = true
+    try {
+      renameSync(join(dir, 'next.tmp'), join(dir, 'next.asar'))
+    } finally {
+      process.noAsar = false
+    }
+    setUpdate('ready')
+  } catch {
+    if ((update as UpdateStatus) === 'downloading') setUpdate('none')
+  }
 }
 
 app.on('before-quit', () => {

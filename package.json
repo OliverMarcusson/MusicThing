@@ -1,6 +1,6 @@
 {
   "name": "musicthing",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "librespot": "0.8.0-3",
   "description": "A minimalist Spotify client with Cover Flow",
   "main": "./out/main/boot.js",

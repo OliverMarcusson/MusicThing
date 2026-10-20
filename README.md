@@ -30,6 +30,7 @@ bun run dev        # electron-vite dev --watch
 bun run typecheck  # node + web
 bun run build:win  # installer
 bun run release    # build and upload to the update feed
+bun run release:site  # upload just the landing page
 ```
 
 ## Releasing

@@ -24,7 +24,8 @@
     "build:linux:docker": "node scripts/build-linux.mjs",
     "bump": "node scripts/bump.mjs",
     "release": "node scripts/release.mjs",
-    "release:local": "node scripts/release.mjs --local"
+    "release:local": "node scripts/release.mjs --local",
+    "release:site": "scp site/index.html root@192.168.0.67:/srv/compose/edge/sites/musicthing/"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

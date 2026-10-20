@@ -100,6 +100,7 @@ function Shell({
   const [view, setView] = useState<View>({ kind: 'now' })
   const [searchOpen, setSearchOpen] = useState(false)
   const [settings, updateSettings] = useSettings()
+  useEffect(() => void window.api.setAlwaysOnTop(settings.alwaysOnTop), [settings.alwaysOnTop])
 
   // The startup playlist, once MusicThing's player is up, on a fresh start with nothing playing
   // anywhere (another device keeps what it's doing).

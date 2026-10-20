@@ -33,6 +33,11 @@ export function Settings({
           onCheckedChange={(on) => onChange({ showVersion: on })}
         />
         <Row
+          label="Always on top"
+          checked={settings.alwaysOnTop}
+          onCheckedChange={(on) => onChange({ alwaysOnTop: on })}
+        />
+        <Row
           label="Play a playlist on startup"
           checked={settings.startupOn}
           onCheckedChange={(on) => onChange({ startupOn: on })}

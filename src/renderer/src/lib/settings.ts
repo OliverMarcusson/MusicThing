@@ -2,13 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 
 export type Settings = {
   showVersion: boolean
+  alwaysOnTop: boolean
   /** Play `startup` shuffled when the app starts fresh (not when a restart resumes playback). */
   startupOn: boolean
   /** Kept when startupOn goes off, so turning it back on remembers the pick. */
   startup: { uri: string; name: string } | null
 }
 
-const DEFAULTS: Settings = { showVersion: true, startupOn: false, startup: null }
+const DEFAULTS: Settings = {
+  showVersion: true,
+  alwaysOnTop: false,
+  startupOn: false,
+  startup: null
+}
 
 /** The settings page's choices, kept on this machine. */
 export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {

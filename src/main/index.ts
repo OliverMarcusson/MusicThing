@@ -235,6 +235,7 @@ app.whenReady().then(() => {
   ipcMain.handle('connect:watch', () =>
     connectWatch((c) => mainWindow?.webContents.send('connect:cluster', c))
   )
+  ipcMain.handle('window:alwaysOnTop', (_, on: boolean) => mainWindow?.setAlwaysOnTop(on))
   ipcMain.handle('app:freshStart', () => {
     const fresh = freshStart
     // In dev, Restart is a window reload (see the tray), so a reload starts fresh there.

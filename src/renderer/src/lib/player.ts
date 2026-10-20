@@ -12,7 +12,7 @@ const HISTORY = 50
 const RECENT = 50
 // How close to its end a track must be for a stop to count as the playlist running out.
 const END_MARGIN_MS = 4000
-// How long shuffle or repeat set here outlasts pushes that still show the old setting.
+// How long play/pause, shuffle or repeat set here outlasts pushes that still show the old setting.
 const HOLD_MS = 2000
 
 export type Player = ReturnType<typeof usePlayer>
@@ -40,7 +40,7 @@ export function usePlayer() {
   const ended = useRef<string | null>(null)
   // A track change that may be that stop, until its pause shows up or the window passes.
   const stopping = useRef<{ id: string | null; until: number } | null>(null)
-  // Shuffle or repeat just set here. Pushes sent before Spotify applied it still carry the old
+  // Play/pause, shuffle or repeat just set here. Pushes sent before Spotify applied it still carry the old
   // setting, which would flip the button back and forth, so for a moment this wins over them.
   const held = useRef<{ patch: Partial<PlaybackState>; until: number } | null>(null)
   const hold = (patch: Partial<PlaybackState>): void => {
@@ -277,6 +277,9 @@ export function usePlayer() {
     [refresh]
   )
 
+  const restart = (): Promise<void> =>
+    command('PUT', '/me/player/seek?position_ms=0', { progress_ms: 0 })
+
   return {
     skipBy,
     devices,
@@ -294,6 +297,7 @@ export function usePlayer() {
     error,
     toggle: async () => {
       const progress = state ? { progress_ms: progressAt(state, syncedAt) } : {}
+      hold({ is_playing: !state?.is_playing })
       if (state?.is_playing)
         return command('PUT', '/me/player/pause', { is_playing: false, ...progress })
       // device_id wakes the playing device, or MusicThing's player when idle.
@@ -308,11 +312,14 @@ export function usePlayer() {
     history,
     recent,
     pos,
+    // Repeating one song, next and previous start it over rather than leave it (and repeat).
     next: () => {
+      if (state?.repeat_state === 'track') return restart()
       lastSkip.current = { dir: 'next', at: Date.now() }
       return changeTrack('POST', '/me/player/next')
     },
     previous: () => {
+      if (state?.repeat_state === 'track') return restart()
       lastSkip.current = { dir: 'previous', at: Date.now() }
       return changeTrack('POST', '/me/player/previous')
     },

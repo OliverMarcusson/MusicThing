@@ -34,7 +34,8 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   const size = useCoverSize()
   const fetched = useQueue(player, true)
   const { history, pos } = player
-  // Repeating one song, it's the only cover: the rest won't play until repeat is changed.
+  // Repeating one song, it's the only cover: the rest fade out, and won't play until repeat is
+  // changed.
   const one = player.state?.repeat_state === 'track'
 
   // The queue is refetched after each track change, so for a moment it still describes the old
@@ -45,18 +46,18 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   const stale = snap.track && track && snap.track.uri !== track.uri
   const ahead = queue.findIndex((t) => t.uri === track?.uri)
   const upcoming = (
-    one
-      ? []
-      : !stale
-        ? queue
-        : pos < snap.pos
-          ? // Went back: the tracks stepped over, then the one we left, are next again.
-            [...snap.history.slice(history.length + 1), snap.track!, ...queue]
-          : ahead >= 0
-            ? queue.slice(ahead + 1) // went forward into the queue
-            : queue
+    !stale
+      ? queue
+      : pos < snap.pos
+        ? // Went back: the tracks stepped over, then the one we left, are next again.
+          [...snap.history.slice(history.length + 1), snap.track!, ...queue]
+        : ahead >= 0
+          ? queue.slice(ahead + 1) // went forward into the queue
+          : queue
   ).slice(0, REACH)
-  const behind = one ? [] : history.slice(-REACH)
+  const behind = history.slice(-REACH)
+  // How far the flow can move each way.
+  const [back, forward] = one ? [0, 0] : [behind.length, upcoming.length]
   const items = [
     ...behind.map((t, i) => ({ t, offset: i - behind.length })),
     ...(track ? [{ t: track, offset: 0 }] : []),
@@ -127,7 +128,7 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
 
   // Move the flow to a slot right away; Spotify follows once the swiping stops.
   const goTo = (slot: number): void => {
-    target.current = clamp(slot, -behind.length, upcoming.length)
+    target.current = clamp(slot, -back, forward)
     settle()
     schedule()
   }
@@ -136,8 +137,8 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
   // rubber-bands past the last cover.
   const follow = (dx: number): void => {
     const at = target.current - dx / (size * NEIGHBOUR)
-    const max = upcoming.length
-    const min = -behind.length
+    const max = forward
+    const min = -back
     drag.set(-(at > max ? max + (at - max) * 0.2 : at < min ? min + (at - min) * 0.2 : at))
   }
 
@@ -206,6 +207,7 @@ export function CoverFlow({ player }: { player: Player }): React.JSX.Element {
           drag={drag}
           size={size}
           late={!firstKeys.has(pos + offset)}
+          hidden={one && offset !== 0}
           onSelect={() => goTo(offset)}
         />
       ))}
@@ -231,6 +233,7 @@ function Cover({
   drag,
   size,
   late,
+  hidden = false,
   onSelect,
   onLeft
 }: {
@@ -240,13 +243,17 @@ function Cover({
   size: number
   /** Arrived after the flow's first render (see below), so it glides in. */
   late: boolean
+  hidden?: boolean
   onSelect: () => void
   /** Makes this the leaving cover: it fades out as the flow settles, then this is called. */
   onLeft?: () => void
 }): React.JSX.Element {
   const leaving = !!onLeft
   // The fade overlaps the end of the slide, so the two read as one movement.
-  const fade = useMotionValue(1)
+  const fade = useMotionValue(hidden ? 0 : 1)
+  useEffect(() => {
+    if (!onLeft) animate(fade, hidden ? 0 : 1, { duration: 0.3, ease: 'easeOut' })
+  }, [hidden]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!onLeft) return
     // A stopped animation (StrictMode's rerun stops the first) may still resolve; only a finished
@@ -286,7 +293,10 @@ function Cover({
   // Covers beyond the neighbours are hidden and fade in as they're dragged into view.
   const opacity = useTransform(() => clamp((2 - Math.abs(at.get())) * 2, 0, 1) * fade.get())
   const zIndex = useTransform(at, (v) => 50 - Math.round(Math.abs(v) * 10))
-  const pointerEvents = useTransform(at, (v) => (leaving || Math.abs(v) > 1.5 ? 'none' : 'auto'))
+  // Reads the fade too, so a hidden cover can't be clicked and comes back clickable with its fade.
+  const pointerEvents = useTransform(() =>
+    leaving || fade.get() < 0.5 || Math.abs(at.get()) > 1.5 ? 'none' : 'auto'
+  )
 
   // One image size for every slot, so a cover doesn't reload when it reaches the centre.
   const art = imageUrl(track.album?.images, 640)
@@ -294,8 +304,8 @@ function Cover({
   return (
     <motion.button
       type="button"
-      tabIndex={neighbour && !leaving ? 0 : -1}
-      aria-hidden={leaving || (!neighbour && offset !== 0)}
+      tabIndex={neighbour && !leaving && !hidden ? 0 : -1}
+      aria-hidden={leaving || hidden || (!neighbour && offset !== 0)}
       aria-label={offset === -1 ? 'Previous track' : offset === 1 ? 'Next track' : track.name}
       onClick={onSelect}
       className="absolute top-0 left-1/2 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"

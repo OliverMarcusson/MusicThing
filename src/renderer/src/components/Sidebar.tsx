@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Disc3, Heart, ListMusic } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,10 +20,13 @@ const SLIDE_TRANSITION = { duration: 0.18, ease: 'easeOut' } as const
 
 export function Sidebar({
   view,
-  onSelect
+  onSelect,
+  onReady
 }: {
   view: View
   onSelect: (view: View) => void
+  /** Called once the first page of playlists has loaded (or failed). */
+  onReady: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<'playlists' | 'albums'>('playlists')
   const [open, setOpen] = useState(false)
@@ -126,7 +129,7 @@ export function Sidebar({
                 transition={SLIDE_TRANSITION}
               >
                 {tab === 'playlists' ? (
-                  <PlaylistList isActive={isActive} onSelect={onSelect} />
+                  <PlaylistList isActive={isActive} onSelect={onSelect} onReady={onReady} />
                 ) : (
                   <AlbumList isActive={isActive} onSelect={onSelect} />
                 )}
@@ -149,8 +152,16 @@ type ListProps = {
   onSelect: (view: View) => void
 }
 
-function PlaylistList({ isActive, onSelect }: ListProps): React.JSX.Element {
-  const { items, error, sentinel } = usePaged<Playlist>('/me/playlists?limit=50')
+function PlaylistList({
+  isActive,
+  onSelect,
+  onReady
+}: ListProps & { onReady: () => void }): React.JSX.Element {
+  const { items, error, done, sentinel } = usePaged<Playlist>('/me/playlists?limit=50')
+  const loaded = items.length > 0 || done || !!error
+  useEffect(() => {
+    if (loaded) onReady()
+  }, [loaded, onReady])
   return (
     <>
       {/* Liked Songs is pinned above the user's playlists. */}

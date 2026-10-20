@@ -9,16 +9,25 @@ const ARCS = [
   { d: 'M66 176Q118 154 178 188', width: 20 }
 ]
 
-/** Covers the window on launch while the mark pulses in, then fades away. */
-export function Intro(): React.JSX.Element | null {
+/**
+ * Covers the window on launch while the mark pulses in, then fades away once the app is `ready`
+ * (playlists loaded, or the login screen up). Never shorter than the pulse, never over 5s.
+ */
+export function Intro({ ready }: { ready: boolean }): React.JSX.Element | null {
   const reduce = useReducedMotion()
-  const [shown, setShown] = useState(true)
+  const [played, setPlayed] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
-    const t = setTimeout(() => setShown(false), 1300)
-    return () => clearTimeout(t)
+    const a = setTimeout(() => setPlayed(true), 1300)
+    const b = setTimeout(() => setTimedOut(true), 5000)
+    return () => {
+      clearTimeout(a)
+      clearTimeout(b)
+    }
   }, [])
 
+  const shown = !(played && ready) && !timedOut
   if (reduce) return null
   return (
     <AnimatePresence>

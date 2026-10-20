@@ -21,6 +21,8 @@ export type View =
 
 export default function App(): React.JSX.Element | null {
   const [authed, setAuthed] = useState<boolean | null>(null)
+  // Set once the sidebar's first page of playlists is in, so the intro covers that load.
+  const [libraryReady, setLibraryReady] = useState(false)
 
   useEffect(() => {
     window.api.token().then(
@@ -31,9 +33,11 @@ export default function App(): React.JSX.Element | null {
 
   return (
     <>
-      <Intro />
+      <Intro ready={libraryReady || authed === false} />
       {authed === false && <Login onDone={() => setAuthed(true)} />}
-      {authed && <Shell onSignedOut={() => setAuthed(false)} />}
+      {authed && (
+        <Shell onSignedOut={() => setAuthed(false)} onReady={() => setLibraryReady(true)} />
+      )}
     </>
   )
 }
@@ -69,7 +73,13 @@ function Login({ onDone }: { onDone: () => void }): React.JSX.Element {
   )
 }
 
-function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element {
+function Shell({
+  onSignedOut,
+  onReady
+}: {
+  onSignedOut: () => void
+  onReady: () => void
+}): React.JSX.Element {
   const player = usePlayer()
   const { error } = player
 
@@ -122,7 +132,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
         <div className="relative flex min-h-0 flex-1">
           <UpdateButton />
           {/* The rail runs to the top edge; only the content column carries the title bar. */}
-          <Sidebar view={view} onSelect={setView} />
+          <Sidebar view={view} onSelect={setView} onReady={onReady} />
           <div className="flex min-w-0 flex-1 flex-col">
             {/* Custom title bar: a drag strip in the app's colours. Windows draws its own
                 min/max/close buttons over the right end (titleBarOverlay), keeping Snap Layouts. */}

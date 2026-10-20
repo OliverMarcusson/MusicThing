@@ -8,6 +8,8 @@ const SKIP_WAIT_MS = 4000
 // How long after pressing "previous" a track change still counts as going back.
 const BACK_WINDOW_MS = 5000
 const HISTORY = 50
+// Songs kept on the History page.
+const RECENT = 50
 // How close to its end a track must be for a stop to count as the playlist running out.
 const END_MARGIN_MS = 4000
 
@@ -42,6 +44,16 @@ export function usePlayer() {
   // Position of the current track in the play sequence; Cover Flow keys covers by it, so on a
   // skip the neighbour slides into the centre even when the same song sits on both sides.
   const [pos, setPos] = useState(0)
+  // The History page: the last songs played, newest first, each once. Unlike `history` it
+  // outlives restarts and context changes; recorded below as each track starts.
+  const [recent, setRecent] = useState<Track[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recent') ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => localStorage.setItem('recent', JSON.stringify(recent)), [recent])
   // Starting another playlist or album starts a fresh run, so nothing sits before its first song.
   // A context-less moment (stopped, between devices) isn't a change.
   const context = state?.context?.uri ?? null
@@ -61,6 +73,7 @@ export function usePlayer() {
     setHistory((h) =>
       fresh ? [] : back ? h.slice(0, -1) : prevTrack ? [...h, prevTrack].slice(-HISTORY) : h
     )
+    if (track) setRecent((r) => [track, ...r.filter((t) => t.id !== track.id)].slice(0, RECENT))
   }
 
   // Playback always targets MusicThing's own player (librespot); looked up once, retried while missing.
@@ -253,6 +266,7 @@ export function usePlayer() {
     },
     lastSkip,
     history,
+    recent,
     pos,
     next: () => {
       lastSkip.current = { dir: 'next', at: Date.now() }

@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Heart,
+  History,
   ListMusic,
   Pencil,
   Pin,
@@ -329,6 +330,20 @@ function PlaylistList({
             <Heart className="size-4 fill-current" />
           </Tile>
           <Label title="Liked Songs" subtitle="" />
+        </Row>
+        {/* The last 50 songs played (Player.recent), kept by MusicThing itself. */}
+        <Row
+          index={0}
+          active={isActive('history')}
+          onClick={() => {
+            setSelected(new Set())
+            onSelect({ kind: 'history' })
+          }}
+        >
+          <Tile>
+            <History className="size-4" />
+          </Tile>
+          <Label title="History" subtitle="" />
         </Row>
         {/* Pins drag to reorder among themselves. layoutId on every row lets a pinned or unpinned
           playlist travel between the two lists instead of vanishing and reappearing. */}

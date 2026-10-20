@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { ArrowDownToLine, Heart, Search as SearchIcon } from 'lucide-react'
+import { ArrowDownToLine, Heart, History as HistoryIcon, Search as SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Extras, NowPlaying, Transport } from '@/components/NowPlaying'
@@ -16,6 +16,7 @@ import { imageUrl, Unauthorized, type Album, type Playlist, type Track } from '@
 export type View =
   | { kind: 'now' }
   | { kind: 'liked' }
+  | { kind: 'history' }
   | { kind: 'playlist'; id: string; playlist: Playlist }
   | { kind: 'album'; id: string; album: Album }
 
@@ -179,6 +180,19 @@ function Shell({
                         pick: (i) => i.track,
                         contextUri: 'spotify:collection:tracks'
                       }}
+                      showAlbum
+                      player={player}
+                      onPlayed={() => setView({ kind: 'now' })}
+                    />
+                  )}
+                  {view.kind === 'history' && (
+                    // Played as a list of URIs, from the clicked song on down.
+                    <TrackList<Track>
+                      key="history"
+                      title="History"
+                      images={null}
+                      placeholder={<HistoryIcon className="size-14 text-foreground" />}
+                      source={{ path: null, items: player.recent, pick: (t) => t }}
                       showAlbum
                       player={player}
                       onPlayed={() => setView({ kind: 'now' })}

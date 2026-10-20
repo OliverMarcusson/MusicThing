@@ -3,10 +3,10 @@ import { api, type Paging } from './spotify'
 
 /**
  * Infinite list over a Spotify paging endpoint. Attach `sentinel` to an element after the list;
- * the next page loads when it scrolls near view. Changing `path` starts over.
+ * the next page loads when it scrolls near view. Changing `path` starts over; null loads nothing.
  * ponytail: no cache, every remount refetches; add one if navigation starts to feel slow.
  */
-export function usePaged<T>(path: string) {
+export function usePaged<T>(path: string | null) {
   const [items, setItems] = useState<T[]>([])
   const [next, setNext] = useState<string | null>(path)
   const [error, setError] = useState<unknown>(null)

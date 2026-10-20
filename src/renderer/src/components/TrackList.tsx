@@ -19,7 +19,9 @@ import { clock, cn } from '@/lib/utils'
 const URI_QUEUE = 100
 
 export type TrackSource<T> = {
-  path: string
+  /** A Web API paging endpoint, or null for a list already in hand (`items`). */
+  path: string | null
+  items?: T[]
   /** Pulls the track out of one page item; null skips it (local files, episodes, removed tracks). */
   pick: (item: T) => Track | null
   /** Playlist or album URI; omit to play a plain URI list. */
@@ -50,7 +52,9 @@ export function TrackList<T>({
   onPlayed?: () => void
   player: Player
 }): React.JSX.Element {
-  const { items, error, done, sentinel } = usePaged<T>(source.path)
+  const paged = usePaged<T>(source.path)
+  const { error, done, sentinel } = paged
+  const items = source.items ?? paged.items
   const [editable, setEditable] = useState(false)
   useEffect(() => {
     if (!playlist) return

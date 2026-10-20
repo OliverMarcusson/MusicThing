@@ -93,7 +93,7 @@ function onPush(msg: {
               String(msg.headers?.['Transfer-Encoding'] === 'gzip' ? gunzipSync(raw) : raw)
             )
           : p
-      if (update?.cluster) watcher?.(filled(update.cluster))
+      if (update?.cluster) emit(filled(update.cluster))
     } catch (err) {
       console.error('Unreadable Spotify Connect push:', err)
     }
@@ -154,7 +154,7 @@ async function cluster(): Promise<Cluster> {
     body: JSON.stringify(REGISTER)
   })
   const c = filled(await res.json())
-  watcher?.(c)
+  emit(c)
   return c
 }
 
@@ -231,14 +231,17 @@ export const command = (cmd: Record<string, unknown>, to?: string): Promise<Conn
     return true as const
   })
 
+const transferTo = (to: string): Promise<Response> =>
+  call(`/connect-state/v1/connect/transfer/from/${DEVICE_ID}/to/${to}`, {
+    method: 'POST',
+    body: JSON.stringify({ transfer_options: { restore_paused: 'resume' } })
+  })
+
 /** Moves playback to `to` and keeps it playing. */
 export const transfer = (to: string): Promise<ConnectResult<true>> =>
   op(async () => {
     await cluster()
-    await call(`/connect-state/v1/connect/transfer/from/${DEVICE_ID}/to/${to}`, {
-      method: 'POST',
-      body: JSON.stringify({ transfer_options: { restore_paused: 'resume' } })
-    })
+    await transferTo(to)
     return true as const
   })
 
@@ -380,8 +383,10 @@ const toJam = (s: Session | null): Jam | null =>
   }
 
 // librespot's device; a Jam joined here plays on it.
+const playerId = (c: Cluster): string | undefined =>
+  Object.entries(c.devices ?? {}).find(([, d]) => d.name === 'MusicThing')?.[0]
 const player = (c: Cluster): string => {
-  const id = Object.entries(c.devices ?? {}).find(([, d]) => d.name === 'MusicThing')?.[0]
+  const id = playerId(c)
   if (!id) throw new Error("MusicThing's player isn't connected yet; try again in a moment.")
   return id
 }
@@ -446,6 +451,27 @@ export const jam = (
     }
     return toJam(current)
   })
+
+// Quitting takes librespot, and with it the Jam's playback, away. Once it's back after a start, a
+// guest joins again to play here, and a host whose Jam stopped playing moves it here.
+let resumed = false
+function emit(c: Cluster): void {
+  watcher?.(c)
+  const here = playerId(c)
+  if (resumed || !here) return
+  resumed = true
+  if (c.active_device_id === here) return
+  op(async () => {
+    const s = await session('/v2/sessions/current')
+    if (!s) return
+    if (!s.is_session_owner)
+      await session(
+        `/v2/sessions/join/${s.join_session_token}?local_device_id=${here}&playback_control=listen_and_control`,
+        { method: 'POST' }
+      )
+    else if (!c.active_device_id) await transferTo(here)
+  }).then((r) => 'error' in r && console.error('Rejoining the Jam failed:', r.message))
+}
 
 /** Calls `cb` whenever the Jam changes (someone joins, leaves, or it ends). */
 export const watchJam = (cb: () => void): void => {

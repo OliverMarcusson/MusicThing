@@ -388,6 +388,7 @@ function PlaylistList({
           <div className="shrink-0 px-2">
             <FoldHeader
               open={prefs.hiddenOpen}
+              up
               label={`Hidden (${hiddenRows.length})`}
               onToggle={() => {
                 setAction('fold')
@@ -487,11 +488,14 @@ function PlaylistList({
 function FoldHeader({
   open,
   label,
-  onToggle
+  onToggle,
+  up = false
 }: {
   open: boolean
   label: string
   onToggle: () => void
+  /** The list opens upwards: the chevron points up, then down once open. */
+  up?: boolean
 }): React.JSX.Element {
   return (
     <Button
@@ -502,7 +506,12 @@ function FoldHeader({
       onClick={onToggle}
     >
       <span className="grid w-9 shrink-0 place-items-center">
-        <ChevronRight className={cn('transition-transform duration-200', open && 'rotate-90')} />
+        <ChevronRight
+          className={cn(
+            'transition-transform duration-200',
+            open ? 'rotate-90' : up && '-rotate-90'
+          )}
+        />
       </span>
       <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
         {label}

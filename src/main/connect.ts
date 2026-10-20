@@ -478,24 +478,31 @@ export const jam = (
   })
 
 // Quitting, or librespot dropping its connection, takes the Jam's playback away with the player.
-// Whenever the player comes back, a guest joins again to play here, and a host whose Jam stopped
-// playing moves it here.
+// Whenever the player comes back, a guest leaves and joins again, the way its first join started
+// playback here; a host whose Jam isn't playing on another device moves it here. librespot comes
+// back under the same device id, which Spotify may still list as playing, so that says nothing.
 let playerSeen = false
 function emit(c: Cluster): void {
   watcher?.(c)
   const here = playerId(c)
   const back = !!here && !playerSeen
   playerSeen = !!here
-  if (!back || c.active_device_id === here) return
+  if (!back) return
   op(async () => {
     const s = (inJam = await session('/v2/sessions/current'))
     if (!s) return
-    if (!s.is_session_owner)
-      await session(
-        `/v2/sessions/join/${s.join_session_token}?local_device_id=${here}&playback_control=listen_and_control`,
-        { method: 'POST' }
-      )
-    else if (!c.active_device_id) await transferTo(here)
+    if (s.is_session_owner) {
+      if (!c.active_device_id || c.active_device_id === here) await transferTo(here)
+      return
+    }
+    // Leaving without a token to come back with would drop out of the Jam for good.
+    if (!s.join_session_token) throw new Error('Spotify sent no Jam token to rejoin with.')
+    await session(`/v2/sessions/leave?local_device_id=${here}`, { method: 'POST' })
+    inJam = await session(
+      `/v2/sessions/join/${s.join_session_token}?local_device_id=${here}&playback_control=listen_and_control`,
+      { method: 'POST' }
+    )
+    jamWatcher?.(toJam(inJam))
   }).then((r) => 'error' in r && console.error('Rejoining the Jam failed:', r.message))
 }
 

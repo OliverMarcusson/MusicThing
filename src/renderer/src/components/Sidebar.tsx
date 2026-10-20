@@ -227,22 +227,71 @@ function PlaylistList({
 
   // The last change decides how rows come and go: see ROW_MOTION.
   const [action, setAction] = useState<Action>(null)
-  // Pinning unhides and hiding unpins, so a playlist is never both.
-  const togglePin = (p: Playlist): void => {
+  // Ctrl-click toggles a row into the selection, Shift-click takes the range from the last one
+  // clicked, in on-screen order. The menu then acts on the whole selection.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const anchor = useRef<string | null>(null)
+  const onScreen = [...pinnedRows, ...(folded ? [] : rows), ...(prefs.hiddenOpen ? hiddenRows : [])]
+  const select = (p: Playlist, e: React.MouseEvent): boolean => {
+    const ids = onScreen.map((x) => x.id)
+    const from = anchor.current ? ids.indexOf(anchor.current) : -1
+    if (e.shiftKey && from >= 0) {
+      const [a, b] = [from, ids.indexOf(p.id)].sort((x, y) => x - y)
+      setSelected(new Set(ids.slice(a, b + 1)))
+      return true
+    }
+    anchor.current = p.id
+    // With no row to range from, Shift-click starts a selection like Ctrl-click.
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      setSelected((s) => {
+        const next = new Set(s)
+        if (!next.delete(p.id)) next.add(p.id)
+        return next
+      })
+      return true
+    }
+    setSelected(new Set())
+    return false
+  }
+  useEffect(() => {
+    if (!selected.size) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setSelected(new Set())
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected])
+  // A selected row's menu acts on the selection; any other row's on that row alone.
+  const targets = (p: Playlist): Playlist[] =>
+    selected.has(p.id) ? onScreen.filter((x) => selected.has(x.id)) : [p]
+
+  // Pinning unhides and hiding unpins, so a playlist is never both. Mixed batches pin (or hide)
+  // the rest; all-pinned (or all-hidden) ones toggle back.
+  const togglePin = (ps: Playlist[]): void => {
+    const unpin = ps.every((p) => pinned.has(p.id))
+    const ids = new Set(ps.map((p) => p.id))
     setAction('move')
+    setSelected(new Set())
     setPrefs((s) => ({
       ...s,
-      pinned: pinned.has(p.id) ? s.pinned.filter((x) => x.id !== p.id) : [...s.pinned, p],
-      hidden: s.hidden.filter((id) => id !== p.id)
+      pinned: unpin
+        ? s.pinned.filter((x) => !ids.has(x.id))
+        : [...s.pinned, ...ps.filter((p) => !pinned.has(p.id))],
+      hidden: s.hidden.filter((id) => !ids.has(id))
     }))
   }
-  const toggleHidden = (p: Playlist): void => {
+  const toggleHidden = (ps: Playlist[]): void => {
+    const unhide = ps.every((p) => hidden.has(p.id))
+    const ids = new Set(ps.map((p) => p.id))
     // Travels to the other list if that one is open; otherwise folds away.
-    setAction((hidden.has(p.id) ? !folded : prefs.hiddenOpen) ? 'move' : 'fold')
+    setAction((unhide ? !folded : prefs.hiddenOpen) ? 'move' : 'fold')
+    setSelected(new Set())
     setPrefs((s) => ({
       ...s,
-      hidden: hidden.has(p.id) ? s.hidden.filter((id) => id !== p.id) : [...s.hidden, p.id],
-      pinned: s.pinned.filter((x) => x.id !== p.id)
+      hidden: unhide
+        ? s.hidden.filter((id) => !ids.has(id))
+        : [...s.hidden, ...ps.filter((p) => !hidden.has(p.id)).map((p) => p.id)],
+      pinned: s.pinned.filter((x) => !ids.has(x.id))
     }))
   }
   const reorderPins = (ids: string[]): void =>
@@ -266,7 +315,14 @@ function PlaylistList({
     <>
       <Scroller>
         {/* Liked Songs is pinned above the user's playlists. */}
-        <Row index={0} active={isActive('liked')} onClick={() => onSelect({ kind: 'liked' })}>
+        <Row
+          index={0}
+          active={isActive('liked')}
+          onClick={() => {
+            setSelected(new Set())
+            onSelect({ kind: 'liked' })
+          }}
+        >
           <Tile>
             <Heart className="size-4 fill-current" />
           </Tile>
@@ -352,13 +408,21 @@ function PlaylistList({
 
   function renderRow(p: Playlist, index: number): React.JSX.Element {
     const name = prefs.names[p.id] ?? p.name
+    const ps = targets(p)
     return (
       <PlaylistMenu
-        pinned={pinned.has(p.id)}
-        hidden={hidden.has(p.id)}
-        onOpenChange={setMenuOpen}
-        onPin={() => togglePin(p)}
-        onHide={() => toggleHidden(p)}
+        count={ps.length}
+        pinned={ps.every((x) => pinned.has(x.id))}
+        hidden={ps.every((x) => hidden.has(x.id))}
+        dimmed={hidden.has(p.id)}
+        selected={selected.has(p.id)}
+        onOpenChange={(open) => {
+          setMenuOpen(open)
+          // Right-clicking outside the selection lets it go.
+          if (open && !selected.has(p.id)) setSelected(new Set())
+        }}
+        onPin={() => togglePin(ps)}
+        onHide={() => toggleHidden(ps)}
         onRename={() => setRenaming(p.id)}
       >
         {renaming === p.id ? (
@@ -377,8 +441,10 @@ function PlaylistList({
             index={action ? undefined : index}
             active={isActive('playlist', p.id)}
             // The renamed title carries through to the playlist's page.
-            onClick={() =>
-              !dragged.current && onSelect({ kind: 'playlist', id: p.id, playlist: { ...p, name } })
+            onClick={(e) =>
+              !dragged.current &&
+              !select(p, e) &&
+              onSelect({ kind: 'playlist', id: p.id, playlist: { ...p, name } })
             }
           >
             <Cover images={p.images} />
@@ -494,7 +560,7 @@ function Row({
   children
 }: {
   active: boolean
-  onClick: () => void
+  onClick: (e: React.MouseEvent) => void
   /** Position in a loaded list; list rows fade in one after another, like the track lists. */
   index?: number
   children: React.ReactNode
@@ -545,18 +611,27 @@ function Cover({ images }: { images: Image[] | null }): React.JSX.Element {
   )
 }
 
-/** Right-click menu for a playlist row. Hidden rows are dimmed. */
+/**
+ * Right-click menu for a playlist row, acting on `count` playlists (the selection, if the row is
+ * in it); `pinned`/`hidden` say whether all of them are. Hidden rows are dimmed.
+ */
 function PlaylistMenu({
+  count,
   pinned,
   hidden,
+  dimmed,
+  selected,
   onOpenChange,
   onPin,
   onHide,
   onRename,
   children
 }: {
+  count: number
   pinned: boolean
   hidden: boolean
+  dimmed: boolean
+  selected: boolean
   onOpenChange: (open: boolean) => void
   onPin: () => void
   onHide: () => void
@@ -567,7 +642,9 @@ function PlaylistMenu({
   const renaming = useRef(false)
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger className={cn('block', hidden && 'opacity-50')}>
+      <ContextMenuTrigger
+        className={cn('block rounded-md', dimmed && 'opacity-50', selected && 'bg-accent/70')}
+      >
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent
@@ -579,20 +656,24 @@ function PlaylistMenu({
         <ContextMenuItem onSelect={onPin}>
           {pinned ? <PinOff /> : <Pin />}
           {pinned ? 'Unpin' : 'Pin to top'}
+          {count > 1 && ` ${count} playlists`}
         </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => {
-            renaming.current = true
-            onRename()
-          }}
-        >
-          <Pencil />
-          Rename
-        </ContextMenuItem>
+        {count === 1 && (
+          <ContextMenuItem
+            onSelect={() => {
+              renaming.current = true
+              onRename()
+            }}
+          >
+            <Pencil />
+            Rename
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onHide}>
           {hidden ? <Eye /> : <EyeOff />}
           {hidden ? 'Unhide' : 'Hide'}
+          {count > 1 && ` ${count} playlists`}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

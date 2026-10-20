@@ -1,7 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Disc3, Heart, ListMusic } from 'lucide-react'
+import { Disc3, Eye, EyeOff, Heart, ListMusic, Pencil, Pin, PinOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu'
 import { imageUrl, type Album, type Image, type Playlist } from '@/lib/spotify'
 import { usePaged } from '@/lib/use-paged'
 import { cn } from '@/lib/utils'
@@ -29,7 +36,10 @@ export function Sidebar({
   onReady: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<'playlists' | 'albums'>('playlists')
-  const [open, setOpen] = useState(false)
+  const [hovered, setOpen] = useState(false)
+  // A row's menu or rename box holds the panel open, as the pointer and focus leave for them.
+  const [held, setHeld] = useState(false)
+  const open = hovered || held
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const reduceMotion = useReducedMotion()
   const dir = tab === 'albums' ? 1 : -1
@@ -129,7 +139,12 @@ export function Sidebar({
                 transition={SLIDE_TRANSITION}
               >
                 {tab === 'playlists' ? (
-                  <PlaylistList isActive={isActive} onSelect={onSelect} onReady={onReady} />
+                  <PlaylistList
+                    isActive={isActive}
+                    onSelect={onSelect}
+                    onReady={onReady}
+                    onHold={setHeld}
+                  />
                 ) : (
                   <AlbumList isActive={isActive} onSelect={onSelect} />
                 )}
@@ -152,16 +167,74 @@ type ListProps = {
   onSelect: (view: View) => void
 }
 
+type Prefs = { hidden: string[]; pinned: Playlist[]; names: Record<string, string> }
+const NO_PREFS: Prefs = { hidden: [], pinned: [], names: {} }
+
+/** Hidden, pinned and renamed playlists: MusicThing's own, kept on this machine, not on Spotify. */
+function usePlaylistPrefs(): [Prefs, React.Dispatch<React.SetStateAction<Prefs>>] {
+  const [prefs, setPrefs] = useState<Prefs>(() => {
+    try {
+      return { ...NO_PREFS, ...JSON.parse(localStorage.getItem('playlist-prefs') ?? '{}') }
+    } catch {
+      return NO_PREFS
+    }
+  })
+  useEffect(() => localStorage.setItem('playlist-prefs', JSON.stringify(prefs)), [prefs])
+  return [prefs, setPrefs]
+}
+
 function PlaylistList({
   isActive,
   onSelect,
-  onReady
-}: ListProps & { onReady: () => void }): React.JSX.Element {
+  onReady,
+  onHold
+}: ListProps & { onReady: () => void; onHold: (held: boolean) => void }): React.JSX.Element {
   const { items, error, done, sentinel } = usePaged<Playlist>('/me/playlists?limit=50')
   const loaded = items.length > 0 || done || !!error
   useEffect(() => {
     if (loaded) onReady()
   }, [loaded, onReady])
+
+  const [prefs, setPrefs] = usePlaylistPrefs()
+  const [showHidden, setShowHidden] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => onHold(menuOpen || renaming !== null), [menuOpen, renaming, onHold])
+
+  // Pins come first, in the order pinned, and are saved whole so they show before their page
+  // loads; the loaded copy wins once it's in. Hidden ones stay out unless asked for.
+  const loadedById = new Map(items.filter(Boolean).map((p) => [p.id, p]))
+  const pinned = new Set(prefs.pinned.map((p) => p.id))
+  const hidden = new Set(prefs.hidden)
+  const rows = [
+    ...prefs.pinned.map((p) => loadedById.get(p.id) ?? p),
+    ...[...loadedById.values()].filter(
+      (p) => !pinned.has(p.id) && (showHidden || !hidden.has(p.id))
+    )
+  ]
+
+  // Pinning unhides and hiding unpins, so a playlist is never both.
+  const togglePin = (p: Playlist): void =>
+    setPrefs((s) => ({
+      ...s,
+      pinned: pinned.has(p.id) ? s.pinned.filter((x) => x.id !== p.id) : [...s.pinned, p],
+      hidden: s.hidden.filter((id) => id !== p.id)
+    }))
+  const toggleHidden = (p: Playlist): void =>
+    setPrefs((s) => ({
+      ...s,
+      hidden: hidden.has(p.id) ? s.hidden.filter((id) => id !== p.id) : [...s.hidden, p.id],
+      pinned: s.pinned.filter((x) => x.id !== p.id)
+    }))
+  // An empty name, or Spotify's own, drops the local one.
+  const rename = (p: Playlist, name: string): void =>
+    setPrefs((s) => {
+      const names = { ...s.names }
+      if (!name.trim() || name.trim() === p.name) delete names[p.id]
+      else names[p.id] = name.trim()
+      return { ...s, names }
+    })
+
   return (
     <>
       {/* Liked Songs is pinned above the user's playlists. */}
@@ -171,17 +244,62 @@ function PlaylistList({
         </Tile>
         <Label title="Liked Songs" subtitle="" />
       </Row>
-      {items.filter(Boolean).map((p, i) => (
-        <Row
-          key={p.id}
-          index={i + 1}
-          active={isActive('playlist', p.id)}
-          onClick={() => onSelect({ kind: 'playlist', id: p.id, playlist: p })}
+      {rows.map((p, i) => {
+        const name = prefs.names[p.id] ?? p.name
+        return (
+          <PlaylistMenu
+            key={p.id}
+            pinned={pinned.has(p.id)}
+            hidden={hidden.has(p.id)}
+            onOpenChange={setMenuOpen}
+            onPin={() => togglePin(p)}
+            onHide={() => toggleHidden(p)}
+            onRename={() => setRenaming(p.id)}
+          >
+            {renaming === p.id ? (
+              <RenameRow
+                images={p.images}
+                name={name}
+                original={p.name}
+                onDone={(n) => {
+                  if (n !== null) rename(p, n)
+                  setRenaming(null)
+                }}
+              />
+            ) : (
+              <Row
+                index={i + 1}
+                active={isActive('playlist', p.id)}
+                // The renamed title carries through to the playlist's page.
+                onClick={() => onSelect({ kind: 'playlist', id: p.id, playlist: { ...p, name } })}
+              >
+                <Cover images={p.images} />
+                <Label
+                  title={name}
+                  subtitle={
+                    <>
+                      {pinned.has(p.id) && (
+                        <Pin className="mr-1 inline size-3 -translate-y-px rotate-45" />
+                      )}
+                      {p.owner.display_name ?? ''}
+                    </>
+                  }
+                />
+              </Row>
+            )}
+          </PlaylistMenu>
+        )
+      })}
+      {prefs.hidden.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 w-full justify-start px-2.5 text-xs text-muted-foreground group-data-[open=false]/side:invisible"
+          onClick={() => setShowHidden((s) => !s)}
         >
-          <Cover images={p.images} />
-          <Label title={p.name} subtitle={p.owner.display_name ?? ''} />
-        </Row>
-      ))}
+          {showHidden ? 'Leave out hidden' : `Show ${prefs.hidden.length} hidden`}
+        </Button>
+      )}
       <ListEnd error={error} />
       <div ref={sentinel} />
     </>
@@ -267,7 +385,105 @@ function Cover({ images }: { images: Image[] | null }): React.JSX.Element {
   )
 }
 
-const Label = ({ title, subtitle }: { title: string; subtitle: string }): React.JSX.Element => (
+/** Right-click menu for a playlist row. Hidden rows (shown on request) are dimmed. */
+function PlaylistMenu({
+  pinned,
+  hidden,
+  onOpenChange,
+  onPin,
+  onHide,
+  onRename,
+  children
+}: {
+  pinned: boolean
+  hidden: boolean
+  onOpenChange: (open: boolean) => void
+  onPin: () => void
+  onHide: () => void
+  onRename: () => void
+  children: React.ReactNode
+}): React.JSX.Element {
+  // Rename hands focus to its text box, so the menu mustn't return it to the row on close.
+  const renaming = useRef(false)
+  return (
+    <ContextMenu onOpenChange={onOpenChange}>
+      <ContextMenuTrigger className={cn('block', hidden && 'opacity-50')}>
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        onCloseAutoFocus={(e) => {
+          if (renaming.current) e.preventDefault()
+          renaming.current = false
+        }}
+      >
+        <ContextMenuItem onSelect={onPin}>
+          {pinned ? <PinOff /> : <Pin />}
+          {pinned ? 'Unpin' : 'Pin to top'}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            renaming.current = true
+            onRename()
+          }}
+        >
+          <Pencil />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onHide}>
+          {hidden ? <Eye /> : <EyeOff />}
+          {hidden ? 'Unhide' : 'Hide'}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+/** The row while renaming: Enter or leaving saves, Escape cancels, empty restores Spotify's name. */
+function RenameRow({
+  images,
+  name,
+  original,
+  onDone
+}: {
+  images: Image[] | null
+  name: string
+  original: string
+  onDone: (name: string | null) => void
+}): React.JSX.Element {
+  const done = useRef(false)
+  const finish = (value: string | null): void => {
+    if (done.current) return
+    done.current = true
+    onDone(value)
+  }
+  return (
+    <div className="flex h-12 w-full items-center gap-3 rounded-md bg-accent/60 px-2.5">
+      <Cover images={images} />
+      <input
+        autoFocus
+        aria-label="Playlist name"
+        defaultValue={name}
+        placeholder={original}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={(e) => finish(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') finish(e.currentTarget.value)
+          if (e.key === 'Escape') finish(null)
+        }}
+        className="h-7 min-w-0 flex-1 rounded-sm bg-background/60 px-1.5 text-sm outline-none select-text ring-1 ring-ring/50"
+      />
+    </div>
+  )
+}
+
+const Label = ({
+  title,
+  subtitle
+}: {
+  title: string
+  subtitle: React.ReactNode
+}): React.JSX.Element => (
   // Labels fade out when collapsed so no clipped letters peek past the covers.
   <span className="min-w-0 group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
     <span className="block truncate">{title}</span>

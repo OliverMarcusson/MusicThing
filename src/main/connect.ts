@@ -31,7 +31,7 @@ type QueueItem = { uri: string; uid: string; provider?: string; metadata?: Recor
 export type Cluster = {
   active_device_id: string
   server_timestamp_ms?: string
-  devices?: Record<string, { name: string; volume?: number }>
+  devices?: Record<string, { name: string; volume?: number; device_type?: string }>
   player_state: {
     queue_revision: string
     next_tracks: QueueItem[]
@@ -56,6 +56,7 @@ export type ConnectResult<T> = { ok: T } | { error: 'signin' | 'failed'; message
 class Unauthorized extends Error {}
 
 let watcher: ((c: Cluster) => void) | null = null
+let jamWatcher: (() => void) | null = null
 let retry: ReturnType<typeof setTimeout> | undefined
 // Registering again is what resubscribes, after the socket drops or a registration fails.
 function resubscribe(): void {
@@ -72,6 +73,8 @@ function onPush(msg: {
   headers?: Record<string, string>
   payloads?: unknown[]
 }): void {
+  // Jam changes are only a nudge; the session is read again (see `jam`).
+  if (msg.uri?.endsWith('social-connect/v2/session_update')) return jamWatcher?.()
   if (msg.uri !== 'hm://connect-state/v1/cluster') return
   for (const p of msg.payloads ?? []) {
     try {
@@ -338,3 +341,104 @@ export const skipTo = (uid: string): Promise<ConnectResult<true>> =>
     await send(c, { endpoint: 'skip_next', track: { uri, uid } })
     return true as const
   })
+
+/** A Jam (what Spotify's API still calls a social session), as the UI shows it. */
+export type Jam = {
+  id: string
+  /** The host, who can end it for everyone; guests can only leave. */
+  owner: boolean
+  link: string
+  members: { id: string; name: string; image?: string }[]
+}
+
+type Session = {
+  session_id: string
+  join_session_token: string
+  is_session_owner?: boolean
+  session_members?: { id: string; username?: string; display_name?: string; image_url?: string }[]
+}
+
+const toJam = (s: Session | null): Jam | null =>
+  s && {
+    id: s.session_id,
+    owner: !!s.is_session_owner,
+    link: `https://open.spotify.com/socialsession/${s.join_session_token}`,
+    members: (s.session_members ?? []).map((m) => ({
+      id: m.id,
+      name: m.display_name || m.username || 'Someone',
+      image: m.image_url || undefined
+    }))
+  }
+
+// librespot's device; a Jam joined here plays on it.
+const player = (c: Cluster): string => {
+  const id = Object.entries(c.devices ?? {}).find(([, d]) => d.name === 'MusicThing')?.[0]
+  if (!id) throw new Error("MusicThing's player isn't connected yet; try again in a moment.")
+  return id
+}
+
+// Social-connect answers "not in a Jam" with 404 (or 410 for one that just ended). Like the
+// desktop app, requests carry the dealer connection, which session updates are pushed to.
+async function session(path: string, init: RequestInit = {}): Promise<Session | null> {
+  try {
+    const res = await call(`/social-connect${path}`, {
+      ...init,
+      headers: { 'spotify-connection-id': (await connection) ?? '' }
+    })
+    return res.status === 204 ? null : ((await res.json()) as Session)
+  } catch (err) {
+    if (err instanceof Error && /answered (404|410)$/.test(err.message)) return null
+    throw err
+  }
+}
+
+// Invite links: open.spotify.com/socialsession/<token>, spotify:socialsession:<token>, or a
+// spotify.link short link that redirects to the first.
+async function joinToken(link: string): Promise<string> {
+  const token = (s: string): string | undefined => s.match(/socialsession[/:]([\w-]+)/)?.[1]
+  let found = token(link)
+  if (!found && /^https:\/\/spotify\.link\//.test(link.trim())) {
+    const res = await fetch(link.trim())
+    found = token(res.url) ?? token(await res.text())
+  }
+  if (!found) throw new Error("That isn't a Jam invite link.")
+  return found
+}
+
+/**
+ * The user's Jam, after an optional action. `start` makes one around what's playing (Premium
+ * only), `join` takes an invite link and plays it here, `leave` ends it for everyone when hosting.
+ * Endpoints are the official desktop app's, as captured by others; the web player has none.
+ */
+export const jam = (
+  action: 'current' | 'start' | 'join' | 'leave',
+  link?: string
+): Promise<ConnectResult<Jam | null>> =>
+  op(async () => {
+    const c = await cluster()
+    const here = (): string => `local_device_id=${player(c)}`
+    if (action === 'start') return toJam(await session('/v2/sessions/current_or_new?activate=true'))
+    if (action === 'join') {
+      const token = await joinToken(link ?? '')
+      return toJam(
+        await session(`/v2/sessions/join/${token}?${here()}&playback_control=listen_and_control`, {
+          method: 'POST'
+        })
+      )
+    }
+    const current = await session('/v2/sessions/current')
+    if (action === 'leave' && current) {
+      if (current.is_session_owner)
+        await session(`/v3/sessions/${encodeURIComponent(current.session_id)}`, {
+          method: 'DELETE'
+        })
+      else await session(`/v2/sessions/leave?${here()}`, { method: 'POST' })
+      return null
+    }
+    return toJam(current)
+  })
+
+/** Calls `cb` whenever the Jam changes (someone joins, leaves, or it ends). */
+export const watchJam = (cb: () => void): void => {
+  jamWatcher = cb
+}

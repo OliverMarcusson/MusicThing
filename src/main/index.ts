@@ -8,7 +8,10 @@ import { startPlayer, stopPlayer } from './librespot'
 import { getToken, login } from './webplayer'
 import { webApi } from './webapi'
 import {
+  jam as connectJam,
   move as connectMove,
+  transfer as connectTransfer,
+  watchJam,
   queue as connectQueue,
   skipBy as connectSkipBy,
   skipTo as connectSkipTo,
@@ -149,6 +152,11 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('connect:skipTo', (_, uid: string) => connectSkipTo(uid))
   ipcMain.handle('connect:skipBy', (_, n: number, uri: string) => connectSkipBy(n, uri))
+  ipcMain.handle('connect:transfer', (_, to: string) => connectTransfer(to))
+  ipcMain.handle('connect:jam', (_, action: Parameters<typeof connectJam>[0], link?: string) =>
+    connectJam(action, link)
+  )
+  watchJam(() => mainWindow?.webContents.send('connect:jamChanged'))
   ipcMain.handle('connect:watch', () =>
     connectWatch((c) => mainWindow?.webContents.send('connect:cluster', c))
   )

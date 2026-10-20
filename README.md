@@ -10,6 +10,8 @@ Connect device named MusicThing. The official Spotify app isn't needed. Requires
 - Library sidebar (playlists, albums, Liked Songs) that expands on hover
 - iPod-style Cover Flow for Now playing, swipeable
 - Ctrl+K search, queue drawer, accent colour from album art
+- Spotify Connect device picker, and Jams: start one, share its link, join one from a link
+  (Jam endpoints are the desktop app's private ones; can break when Spotify changes them)
 - Playlists the Web API refuses are read through a hidden copy of Spotify's web player
   (can break when the web player changes)
 

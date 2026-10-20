@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { WebApiResponse } from '../main/webapi'
-import type { Cluster, ConnectResult, QueueRef } from '../main/connect'
+import type { Cluster, ConnectResult, Jam, QueueRef } from '../main/connect'
 
 export type UpdateStatus = 'none' | 'downloading' | 'ready'
 
@@ -20,6 +20,20 @@ const api = {
     ipcRenderer.invoke('connect:skipTo', uid),
   connectSkipBy: (n: number, uri: string): Promise<ConnectResult<true>> =>
     ipcRenderer.invoke('connect:skipBy', n, uri),
+  /** Moves playback to another Spotify Connect device. */
+  connectTransfer: (to: string): Promise<ConnectResult<true>> =>
+    ipcRenderer.invoke('connect:transfer', to),
+  /** The user's Jam after an optional action; see main/connect.ts `jam`. */
+  connectJam: (
+    action: 'current' | 'start' | 'join' | 'leave',
+    link?: string
+  ): Promise<ConnectResult<Jam | null>> => ipcRenderer.invoke('connect:jam', action, link),
+  /** Calls back when the Jam changes; returns the unsubscribe. */
+  onJamChanged: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('connect:jamChanged', listener)
+    return () => ipcRenderer.removeListener('connect:jamChanged', listener)
+  },
   /** Starts (or re-reads) the playback state pushed over Spotify Connect; see onCluster. */
   connectWatch: (): Promise<ConnectResult<true>> => ipcRenderer.invoke('connect:watch'),
   /** Calls back with every playback state push; returns the unsubscribe. */

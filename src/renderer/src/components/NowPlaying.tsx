@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
+import { Devices } from '@/components/Devices'
 import { Queue } from '@/components/Queue'
 import { progressAt, type Player } from '@/lib/player'
 import { clock, cn } from '@/lib/utils'
@@ -184,7 +185,7 @@ export function Transport({ player }: { player: Player }): React.JSX.Element {
   )
 }
 
-/** The queue drawer and volume. The drawer opens against the nearest positioned ancestor. */
+/** Devices and Jam, the queue drawer, and volume. The drawer opens against the nearest positioned ancestor. */
 export function Extras({
   player,
   className
@@ -207,6 +208,7 @@ export function Extras({
         )
       }
     >
+      <Devices player={player} />
       <Queue player={player} />
       <Volume2 className="ml-2 size-4 shrink-0" />
       <Slider

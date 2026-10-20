@@ -22,6 +22,8 @@ export function usePlayer() {
   // Bumped after queueing so an open queue view refetches.
   const [queueVersion, setQueueVersion] = useState(0)
   const deviceId = useRef<string | null>(null)
+  // Spotify Connect devices the user can play on, from the latest push.
+  const [devices, setDevices] = useState<{ id: string; name: string; type?: string }[]>([])
   // Which skip button was pressed last. Track ids alone can't tell next from previous when a
   // playlist repeats (A → B → A looks like "back" either way), so views read this instead.
   const lastSkip = useRef<{ dir: 'next' | 'previous'; at: number } | null>(null)
@@ -76,8 +78,11 @@ export function usePlayer() {
     if (track) setRecent((r) => [track, ...r.filter((t) => t.id !== track.id)].slice(0, RECENT))
   }
 
-  // Playback always targets MusicThing's own player (librespot); looked up once, retried while missing.
+  // Commands go to the device that's playing, picked in the Connect menu; with none, to
+  // MusicThing's own player (librespot), looked up once and retried while missing.
   const device = useCallback(async () => {
+    const active = shown.current.state?.device.id
+    if (active) return active
     deviceId.current ??= await localDeviceId().catch(() => null)
     return deviceId.current
   }, [])
@@ -133,6 +138,12 @@ export function usePlayer() {
     async function apply(c: Cluster): Promise<void> {
       const seq = ++latest.current
       const at = Date.now()
+      // The hidden device main/connect.ts sends commands from has no name.
+      setDevices(
+        Object.entries(c.devices ?? {})
+          .filter(([, d]) => d.name)
+          .map(([id, d]) => ({ id, name: d.name, type: d.device_type }))
+      )
       const next = await toState(c)
       if (seq !== latest.current) return
       const wait = awaiting.current
@@ -249,6 +260,15 @@ export function usePlayer() {
 
   return {
     skipBy,
+    devices,
+    /** Moves playback to another Connect device; the push that follows shows it. */
+    transfer: async (id: string) => {
+      const r = await window.api.connectTransfer(id)
+      if ('error' in r) {
+        setError(r.error === 'signin' ? new Unauthorized() : new Error(r.message))
+        refresh()
+      }
+    },
     state,
     syncedAt,
     error,
@@ -256,7 +276,7 @@ export function usePlayer() {
       const progress = state ? { progress_ms: progressAt(state, syncedAt) } : {}
       if (state?.is_playing)
         return command('PUT', '/me/player/pause', { is_playing: false, ...progress })
-      // device_id also pulls playback here if it was active elsewhere or idle.
+      // device_id wakes the playing device, or MusicThing's player when idle.
       const id = await device()
       return command(
         'PUT',

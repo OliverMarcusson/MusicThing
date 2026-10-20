@@ -425,7 +425,9 @@ async function session(path: string, init: RequestInit = {}): Promise<Session | 
       ...init,
       headers: { 'spotify-connection-id': (await connection) ?? '' }
     })
-    return res.status === 204 ? null : ((await res.json()) as Session)
+    // Leaving and ending answer with an empty body.
+    const body = await res.text()
+    return body ? (JSON.parse(body) as Session) : null
   } catch (err) {
     if (err instanceof Error && /answered (404|410)$/.test(err.message)) return null
     throw err

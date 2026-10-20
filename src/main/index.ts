@@ -1,7 +1,18 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, net, session, Tray } from 'electron'
+import {
+  app,
+  dialog,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  net,
+  session,
+  Tray
+} from 'electron'
 import { createHash } from 'crypto'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { startPlayer, stopPlayer } from './librespot'
@@ -126,8 +137,39 @@ function createTray(): void {
   )
 }
 
+// Jam invites (spotify.link → open.spotify.com/socialsession/<token>) hand off to whatever opens
+// spotify: links, normally the official app. MusicThing claims those links and joins the Jam
+// itself, playing it here. Other spotify: links just bring the window up.
+const LINK = /^spotify:/i
+if (is.dev) app.setAsDefaultProtocolClient('spotify', process.execPath, [resolve(process.argv[1])])
+else app.setAsDefaultProtocolClient('spotify')
+
+async function openLink(url: string): Promise<void> {
+  showWindow()
+  if (!/socialsession/i.test(url)) return
+  // Opened by the link, the app has to wait for its player before it can join with it.
+  for (let tries = 0; ; tries++) {
+    const r = await connectJam('join', url)
+    if ('ok' in r) return void mainWindow?.webContents.send('connect:jamChanged', r.ok)
+    if (!/isn't connected yet/.test(r.message) || tries >= 20) {
+      dialog.showMessageBox({ type: 'error', message: "Couldn't join the Jam", detail: r.message })
+      return
+    }
+    await new Promise((done) => setTimeout(done, 3000))
+  }
+}
+
 if (!app.requestSingleInstanceLock()) app.quit()
-app.on('second-instance', showWindow)
+app.on('second-instance', (_, argv) => {
+  const url = argv.find((a) => LINK.test(a))
+  if (url) openLink(url)
+  else showWindow()
+})
+// macOS hands links over as an event instead.
+app.on('open-url', (e, url) => {
+  e.preventDefault()
+  app.whenReady().then(() => openLink(url))
+})
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.marcusson.musicthing')
@@ -166,6 +208,8 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+  const url = process.argv.find((a) => LINK.test(a))
+  if (url) openLink(url)
   checkForUpdates()
   startPlayer()
 })

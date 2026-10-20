@@ -11,6 +11,11 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!resources/librespot/bin/*.old'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+# spotify: links, so Jam invites open here (src/main/index.ts); macOS and Linux need it declared.
+protocols:
+  - name: Spotify
+    schemes:
+      - spotify
 asarUnpack:
   - resources/**
 win:

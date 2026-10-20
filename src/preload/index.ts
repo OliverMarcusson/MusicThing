@@ -1,14 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { WebPage } from '../main/webplayer'
+import type { WebApiResponse } from '../main/webapi'
 import type { Cluster, ConnectResult, QueueRef } from '../main/connect'
 
 export type UpdateStatus = 'none' | 'downloading' | 'ready'
 
 const api = {
   token: (): Promise<string | null> => ipcRenderer.invoke('auth:token'),
-  /** Playlist pages via the web player, for playlists the Web API refuses. */
-  webPlaylist: (id: string, offset: number): Promise<WebPage> =>
-    ipcRenderer.invoke('web:playlist', id, offset),
+  /** A Spotify Web API request, answered by main/webapi.ts. */
+  spotify: (method: string, path: string, body?: string): Promise<WebApiResponse> =>
+    ipcRenderer.invoke('spotify:request', method, path, body),
   /** The app's one Spotify sign-in; resolves false if the window was closed. */
   webLogin: (): Promise<boolean> => ipcRenderer.invoke('web:login'),
   /** Queue editing over Spotify Connect; needs the user signed in. */

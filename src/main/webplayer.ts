@@ -1,53 +1,34 @@
 import { BrowserWindow, session } from 'electron'
 
 /**
- * Playlist contents through open.spotify.com's private GraphQL API, for playlists the Web API
- * refuses (Feb 2026: only owned or collaborative ones are readable).
+ * open.spotify.com's private GraphQL API ("pathfinder"), which is how MusicThing reads Spotify:
+ * the public Web API refuses the web player's token (webapi.ts translates its requests to this).
  *
  * A hidden window loads the web player and Spotify's own code does the token dance (TOTP-signed
- * /api/token, clienttoken). We copy the headers and persisted-query hash from its first real
- * fetchPlaylist request, then make the same request ourselves, so nothing here hard-codes
- * secrets or hashes that Spotify rotates. Anonymous by default (public playlists); after
- * `login()` the session is the user's, so private playlists they can see work too.
+ * /api/token, clienttoken); we copy the token headers from its requests. Queries are persisted:
+ * each is sent as its operation name plus a hash, and the hashes are read from the web player's
+ * own scripts, so nothing here hard-codes secrets or hashes that Spotify rotates.
  *
- * That sign-in is the app's only Spotify login: its token also drives the Web API (`getToken`)
- * and signs librespot in once (librespot.ts).
+ * `login()` is the app's only Spotify sign-in; the same session also signs librespot in once
+ * (librespot.ts) and drives Spotify Connect (connect.ts).
  *
  * Can break whenever the web player changes.
  */
 
 const PARTITION = 'persist:webplayer'
+const WEB_PLAYER = 'https://open.spotify.com/'
 const PATHFINDER = 'https://api-partner.spotify.com/pathfinder/v2/query'
-const CAPTURE_TIMEOUT_MS = 25_000
-// Headers the session or the network stack sets itself.
-const SKIP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie', 'accept-encoding'])
+const LOAD_TIMEOUT_MS = 25_000
+// How the web player's scripts declare a persisted query: name, kind, hash.
+const PERSISTED = /"([A-Za-z0-9_]+)","(?:query|mutation)","([a-f0-9]{64})"/g
 
-type Query = { variables: Record<string, unknown>; hash: string }
-type Captured = { headers: Record<string, string>; query: Query }
-
-let captured: Captured | null = null
-let capturing: Promise<Captured> | null = null
-// Receives the next captured request while a capture window is open.
-let hookCallback: ((c: Captured) => void) | null = null
-// Token headers from the web player's latest call to Spotify's own APIs, for connect.ts.
+// Token headers from the web player's latest call to Spotify's own APIs.
 const AUTH_HEADERS = ['authorization', 'client-token', 'spotify-app-version', 'app-platform']
 // The web player's tokens last an hour; fetch new ones a little before that.
 const AUTH_MAX_AGE_MS = 50 * 60_000
 let auth: Record<string, string> | null = null
 let authAt = 0
 let authWaiter: (() => void) | null = null
-
-export type WebTrack = {
-  id: string | null
-  uri: string
-  name: string
-  duration_ms: number
-  artists: { name: string }[]
-  album: { uri: string; name: string; images: { url: string; width: number | null }[] }
-}
-export type WebPage =
-  | { items: { item: WebTrack | null }[]; total: number; next: number | null }
-  | { error: 'hidden' | 'unavailable' }
 
 // Spotify serves Electron's user agent a static "Open App" page instead of the web player, so
 // this session presents itself as the Chrome that Electron is built on.
@@ -64,22 +45,6 @@ let hooked = false
 function hook(): void {
   if (hooked) return
   hooked = true
-  // Body and headers arrive in separate callbacks; pair them by request id.
-  const queries = new Map<number, Query>()
-  ses().webRequest.onBeforeRequest({ urls: [`${PATHFINDER}*`] }, (d, cb) => {
-    try {
-      const body = JSON.parse(d.uploadData?.[0]?.bytes?.toString() ?? '')
-      if (body.operationName === 'fetchPlaylist')
-        queries.set(d.id, {
-          variables: body.variables,
-          hash: body.extensions.persistedQuery.sha256Hash
-        })
-    } catch {
-      // Not a JSON GraphQL call; nothing to learn from it.
-    }
-    cb({})
-  })
-  // One listener per session, so it also collects the token headers from any Spotify API call.
   ses().webRequest.onBeforeSendHeaders({ urls: ['https://*.spotify.com/*'] }, (d, cb) => {
     const lower = Object.fromEntries(
       Object.entries(d.requestHeaders).map(([k, v]) => [k.toLowerCase(), v])
@@ -88,14 +53,6 @@ function hook(): void {
       auth = Object.fromEntries(AUTH_HEADERS.filter((k) => lower[k]).map((k) => [k, lower[k]]))
       authAt = Date.now()
       authWaiter?.()
-    }
-    const query = queries.get(d.id)
-    queries.delete(d.id)
-    if (query) {
-      const headers = Object.fromEntries(
-        Object.entries(d.requestHeaders).filter(([k]) => !SKIP_HEADERS.has(k.toLowerCase()))
-      )
-      hookCallback?.({ headers, query })
     }
     cb({ requestHeaders: d.requestHeaders })
   })
@@ -122,7 +79,7 @@ let authing: Promise<Record<string, string>> | null = null
  * the web player again so its own code fetches new ones.
  */
 export async function webAuth(fresh = false): Promise<Record<string, string>> {
-  // Checked every time: headers cached from an anonymous playlist capture aren't the user's.
+  // Checked every time: a signed-out session has no user to act as.
   if (!(await ses().cookies.get({ name: 'sp_dc' })).length) throw new SignedOut()
   if (fresh || Date.now() - authAt > AUTH_MAX_AGE_MS) auth = null
   if (auth) return auth
@@ -133,8 +90,8 @@ export async function webAuth(fresh = false): Promise<Record<string, string>> {
       try {
         await new Promise<void>((resolve, reject) => {
           authWaiter = resolve
-          setTimeout(() => reject(new Error('Spotify web player did not load')), CAPTURE_TIMEOUT_MS)
-          win.loadURL('https://open.spotify.com/')
+          setTimeout(() => reject(new Error('Spotify web player did not load')), LOAD_TIMEOUT_MS)
+          win.loadURL(WEB_PLAYER)
         })
       } finally {
         authWaiter = null
@@ -148,7 +105,7 @@ export async function webAuth(fresh = false): Promise<Record<string, string>> {
   return authing
 }
 
-/** The Web API access token, or null while the web player is signed out. */
+/** The web player's access token, or null while it's signed out. */
 export async function getToken(): Promise<string | null> {
   try {
     return (await webAuth()).authorization.replace(/^Bearer /, '')
@@ -158,99 +115,82 @@ export async function getToken(): Promise<string | null> {
   }
 }
 
-// Opens the playlist in a hidden, muted web player just long enough to see one fetchPlaylist call.
-function capture(playlistId: string): Promise<Captured> {
-  capturing ??= new Promise<Captured>((resolve, reject) => {
-    const win = hiddenPlayer()
-    const done = (err: Error | null, c?: Captured): void => {
-      clearTimeout(timer)
-      hookCallback = null
-      if (!win.isDestroyed()) win.destroy()
-      capturing = null
-      if (c) resolve((captured = c))
-      else reject(err)
+let hashes: Promise<Map<string, string>> | null = null
+/**
+ * Persisted-query hashes by operation name, from the web player's main script. Search's queries
+ * live in a chunk it loads on demand, whose file name comes from the main script's chunk map.
+ */
+function loadHashes(): Promise<Map<string, string>> {
+  hashes ??= (async () => {
+    const text = async (url: string): Promise<string> => {
+      const res = await ses().fetch(url)
+      if (!res.ok) throw new Error(`Spotify's web player answered ${res.status}`)
+      return res.text()
     }
-    const timer = setTimeout(
-      () => done(new Error('Spotify web player did not load the playlist')),
-      CAPTURE_TIMEOUT_MS
-    )
-    hookCallback = (c) => done(null, c)
-    hook()
-    win.loadURL(`https://open.spotify.com/playlist/${playlistId}`)
+    const mainUrl = (await text(WEB_PLAYER)).match(
+      /https:\/\/[^"]+\/web-player\/web-player\.[a-f0-9]+\.js/
+    )?.[0]
+    if (!mainUrl) throw new Error("Couldn't find the Spotify web player's scripts.")
+    const main = await text(mainUrl)
+    const found = new Map<string, string>()
+    const collect = (js: string): void => {
+      for (const [, name, hash] of js.matchAll(PERSISTED)) found.set(name, hash)
+    }
+    collect(main)
+    const id = main.match(/(\d+):"xpui-routes-search"/)?.[1]
+    // The map lists each chunk's script hash and its stylesheet hash; only the script answers.
+    for (const [, hash] of id ? main.matchAll(new RegExp(`[,{]${id}:"([a-f0-9]{8})"`, 'g')) : []) {
+      const res = await ses().fetch(
+        mainUrl.replace(/web-player\.[a-f0-9]+\.js$/, `xpui-routes-search.${hash}.js`)
+      )
+      if (res.ok) {
+        collect(await res.text())
+        break
+      }
+    }
+    return found
+  })().catch((err) => {
+    hashes = null
+    throw err
   })
-  return capturing
+  return hashes
 }
 
-/** One page of a playlist, newest web-player shapes mapped onto the Web API's track shape. */
-export async function playlistPage(
-  playlistId: string,
-  offset: number,
-  limit = 100
-): Promise<WebPage> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const { headers, query } = captured ?? (await capture(playlistId))
+/**
+ * Runs one of the web player's GraphQL operations as the signed-in user and returns its `data`.
+ * An expired token or rotated hashes (the web player was updated) are fetched again, once.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function pathfinder<T = any>(
+  operationName: string,
+  variables: Record<string, unknown>
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const hash = (await loadHashes()).get(operationName)
+    if (!hash) throw new Error(`Spotify's web player no longer has a ${operationName} query.`)
     const res = await ses().fetch(PATHFINDER, {
       method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json;charset=UTF-8' },
+      headers: {
+        ...(await webAuth(attempt > 0)),
+        'content-type': 'application/json;charset=UTF-8',
+        accept: 'application/json'
+      },
       body: JSON.stringify({
-        variables: { ...query.variables, uri: `spotify:playlist:${playlistId}`, offset, limit },
-        operationName: 'fetchPlaylist',
-        extensions: { persistedQuery: { version: 1, sha256Hash: query.hash } }
+        variables,
+        operationName,
+        extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
       })
     })
-    // Expired token or a rotated query hash: capture fresh ones and retry once.
-    if (!res.ok) {
-      captured = null
-      continue
-    }
-    const playlist = (await res.json())?.data?.playlistV2
-    if (playlist?.__typename !== 'Playlist') return { error: 'hidden' }
-    const content = playlist.content
-    const items = (content.items as RawItem[]).map((i) => ({ item: toTrack(i.itemV2?.data) }))
-    const end = offset + items.length
-    return {
-      items,
-      total: content.totalCount,
-      next: items.length && end < content.totalCount ? end : null
-    }
-  }
-  return { error: 'unavailable' }
-}
-
-type RawTrack = {
-  __typename: string
-  uri: string
-  name: string
-  trackDuration?: { totalMilliseconds: number }
-  artists?: { items: { profile: { name: string } }[] }
-  albumOfTrack?: {
-    uri: string
-    name: string
-    coverArt?: { sources: { url: string; width: number | null }[] }
-  }
-}
-type RawItem = { itemV2?: { data?: RawTrack } }
-
-function toTrack(t: RawTrack | undefined): WebTrack | null {
-  if (t?.__typename !== 'Track') return null // episodes, unavailable and local items
-  return {
-    id: t.uri.split(':')[2] ?? null,
-    uri: t.uri,
-    name: t.name,
-    duration_ms: t.trackDuration?.totalMilliseconds ?? 0,
-    artists: t.artists?.items.map((a) => ({ name: a.profile.name })) ?? [],
-    album: {
-      uri: t.albumOfTrack?.uri ?? '',
-      name: t.albumOfTrack?.name ?? '',
-      // Largest first, matching the Web API's order.
-      images: [...(t.albumOfTrack?.coverArt?.sources ?? [])].sort(
-        (a, b) => (b.width ?? 0) - (a.width ?? 0)
-      )
-    }
+    const json = res.ok ? await res.json() : null
+    if (json?.data) return json.data
+    if (attempt > 0)
+      throw new Error(json?.errors?.[0]?.message ?? `Spotify's web player answered ${res.status}`)
+    hashes = null
   }
 }
 
 /**
+ * Signs the web-player session in/**
  * Signs the web-player session in as the user so private playlists they can see work too.
  * Resolves true once Spotify sends the window back to the web player, false if it's closed.
  */
@@ -268,7 +208,7 @@ export function login(parent?: BrowserWindow): Promise<boolean> {
     win.webContents.on('did-navigate', (_, url) => {
       if (!url.startsWith('https://open.spotify.com')) return
       ok = true
-      captured = auth = null // the next capture picks up the signed-in token
+      auth = null // the next request picks up the signed-in token
       win.close()
     })
     win.on('closed', () => resolve(ok))

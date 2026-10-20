@@ -1,4 +1,5 @@
-// Thin Web API client. The access token comes from the main process.
+// Web API client. Requests are answered by the main process (main/webapi.ts), in the Web API's
+// shapes, from Spotify's web player and Spotify Connect.
 export class Unauthorized extends Error {}
 
 export class ApiError extends Error {
@@ -10,42 +11,16 @@ export class ApiError extends Error {
   }
 }
 
-// After a 429 every request waits out Spotify's Retry-After; hammering on only extends the limit.
-let coolUntil = 0
-const MAX_WAIT_MS = 30_000
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-
 /** `path` is relative to /v1, or an absolute `next` URL from a paging object. */
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T | null> {
-  const url = path.startsWith('https://') ? path : `https://api.spotify.com/v1${path}`
-  let res: Response
-  for (let attempt = 0; ; attempt++) {
-    const wait = coolUntil - Date.now()
-    if (wait > MAX_WAIT_MS) throw new ApiError(429, 'API rate limit exceeded')
-    if (wait > 0) await sleep(wait)
-    const token = await window.api.token()
-    if (!token) throw new Unauthorized()
-    res = await fetch(url, {
-      ...init,
-      headers: { Authorization: `Bearer ${token}`, ...init?.headers }
-    })
-    if (res.status !== 429 || attempt >= 2) break
-    // The header may be missing or hidden by CORS; then guess a few seconds.
-    const seconds = Number(res.headers.get('Retry-After')) || 5
-    coolUntil = Math.max(coolUntil, Date.now() + seconds * 1000)
-  }
+  const body = typeof init?.body === 'string' ? init.body : undefined
+  const res = await window.api.spotify(init?.method ?? 'GET', path, body)
   if (res.status === 401) throw new Unauthorized()
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null
-    throw new ApiError(res.status, body?.error?.message ?? `Spotify returned ${res.status}`)
+  if (res.status >= 400) {
+    const message = (res.body as { error?: { message?: string } } | null)?.error?.message
+    throw new ApiError(res.status, message ?? `Spotify returned ${res.status}`)
   }
-  // Player commands answer 200/204 with an empty or non-JSON body.
-  const text = await res.text()
-  try {
-    return text ? (JSON.parse(text) as T) : null
-  } catch {
-    return null
-  }
+  return res.body as T | null
 }
 
 export type Image = { url: string; width: number | null }

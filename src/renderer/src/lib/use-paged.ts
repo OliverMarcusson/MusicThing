@@ -1,25 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type Paging } from './spotify'
 
-/** The web player says the playlist isn't visible to it (private, and not signed in). */
-export class WebPlayerHidden extends Error {}
-
-// `webplayer:<playlist id>:<offset>` pages come from the hidden web player instead of the Web API.
-async function loadPage<T>(path: string): Promise<Paging<T> | null> {
-  const web = path.match(/^webplayer:(\w+):(\d+)/)
-  if (!web) return api<Paging<T>>(path)
-  const page = await window.api.webPlaylist(web[1], Number(web[2]))
-  if ('error' in page) {
-    if (page.error === 'hidden') throw new WebPlayerHidden("This playlist isn't public.")
-    throw new Error("Couldn't load this playlist from Spotify's web player.")
-  }
-  return {
-    items: page.items as T[],
-    total: page.total,
-    next: page.next === null ? null : `webplayer:${web[1]}:${page.next}`
-  }
-}
-
 /**
  * Infinite list over a Spotify paging endpoint. Attach `sentinel` to an element after the list;
  * the next page loads when it scrolls near view. Changing `path` starts over.
@@ -44,7 +25,7 @@ export function usePaged<T>(path: string) {
     if (!next || loading.current) return
     loading.current = true
     try {
-      const page = await loadPage<T>(next)
+      const page = await api<Paging<T>>(next)
       setItems((prev) => [...prev, ...(page?.items ?? [])])
       setNext(page?.next ?? null)
     } catch (err) {

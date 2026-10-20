@@ -145,17 +145,18 @@ async function cluster(): Promise<Cluster> {
   return c
 }
 
-async function send(c: Cluster, command: Record<string, unknown>): Promise<Response> {
+async function send(
+  c: Cluster,
+  command: Record<string, unknown>,
+  to = c.active_device_id
+): Promise<Response> {
   try {
-    return await call(
-      `/connect-state/v1/player/command/from/${DEVICE_ID}/to/${c.active_device_id}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          command: { ...command, logging_params: { command_id: randomBytes(16).toString('hex') } }
-        })
-      }
-    )
+    return await call(`/connect-state/v1/player/command/from/${DEVICE_ID}/to/${to}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        command: { ...command, logging_params: { command_id: randomBytes(16).toString('hex') } }
+      })
+    })
   } catch (err) {
     // The cluster keeps the last queue after playback stops, but no device is left to take commands.
     if (err instanceof Error && err.message.endsWith('404'))
@@ -203,6 +204,42 @@ export async function watch(cb: (c: Cluster) => void): Promise<ConnectResult<tru
   if ('error' in r && r.error === 'failed') resubscribe()
   return r
 }
+
+/** The current state across devices. */
+export const state = (): Promise<ConnectResult<Cluster>> => op(cluster)
+
+/**
+ * Sends one player command (endpoint names as the official apps use them) to `to`, or to the
+ * device that's playing.
+ */
+export const command = (cmd: Record<string, unknown>, to?: string): Promise<ConnectResult<true>> =>
+  op(async () => {
+    await send(await cluster(), cmd, to)
+    return true as const
+  })
+
+/** Moves playback to `to` and keeps it playing. */
+export const transfer = (to: string): Promise<ConnectResult<true>> =>
+  op(async () => {
+    await cluster()
+    await call(`/connect-state/v1/connect/transfer/from/${DEVICE_ID}/to/${to}`, {
+      method: 'POST',
+      body: JSON.stringify({ transfer_options: { restore_paused: 'resume' } })
+    })
+    return true as const
+  })
+
+/** Sets the playing device's volume, 0-100. */
+export const volume = (percent: number): Promise<ConnectResult<true>> =>
+  op(async () => {
+    const c = await cluster()
+    await call(`/connect-state/v1/connect/volume/from/${DEVICE_ID}/to/${c.active_device_id}`, {
+      method: 'PUT',
+      // Connect volume runs 0-65535.
+      body: JSON.stringify({ volume: Math.round(percent * 655.35) })
+    })
+    return true as const
+  })
 
 const isTrack = (t: QueueItem): boolean => /^spotify:(track|episode):/.test(t.uri)
 

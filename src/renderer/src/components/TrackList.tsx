@@ -11,20 +11,11 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Player } from '@/lib/player'
-import {
-  api,
-  ApiError,
-  fetchAll,
-  imageUrl,
-  myId,
-  type Image,
-  type Playlist,
-  type Track
-} from '@/lib/spotify'
-import { usePaged, WebPlayerHidden } from '@/lib/use-paged'
+import { api, fetchAll, imageUrl, myId, type Image, type Playlist, type Track } from '@/lib/spotify'
+import { usePaged } from '@/lib/use-paged'
 import { clock, cn } from '@/lib/utils'
 
-// ponytail: Liked Songs has no context URI, so it plays the next 100 loaded tracks as a URI list.
+// Lists without a context URI play the next 100 loaded tracks as a URI list.
 const URI_QUEUE = 100
 
 export type TrackSource<T> = {
@@ -59,15 +50,7 @@ export function TrackList<T>({
   onPlayed?: () => void
   player: Player
 }): React.JSX.Element {
-  // Playlists the Web API refuses (not yours) are read through the hidden web player instead.
-  const playlistId = source.contextUri?.match(/^spotify:playlist:(\w+)$/)?.[1]
-  const [web, setWeb] = useState(false)
-  // Bumped after signing in to the web player, so the list loads again with the new session.
-  const [attempt, setAttempt] = useState(0)
-  const { items, error, done, sentinel } = usePaged<T>(
-    web && playlistId ? `webplayer:${playlistId}:0:${attempt}` : source.path
-  )
-  if (!web && playlistId && error instanceof ApiError && error.status === 403) setWeb(true)
+  const { items, error, done, sentinel } = usePaged<T>(source.path)
   const [editable, setEditable] = useState(false)
   useEffect(() => {
     if (!playlist) return
@@ -99,7 +82,6 @@ export function TrackList<T>({
   // Play starts at the top in order; Shuffle starts on a random track with shuffle on. Shuffle is
   // set after playback starts, so it works even before this PC is the active device, and
   // Spotify then orders the rest around the track that's playing.
-  // ponytail: Liked Songs has no context, so it plays the loaded tracks (first URI_QUEUE).
   const start = async (shuffle: boolean): Promise<void> => {
     const count = source.contextUri ? tracks.length : Math.min(tracks.length, URI_QUEUE)
     const i = shuffle ? Math.floor(Math.random() * count) : 0
@@ -225,34 +207,7 @@ export function TrackList<T>({
             </motion.div>
           )
         })}
-        {web && error instanceof Error ? (
-          // Even when the web player can't list it either, the playlist still plays, and once
-          // it's playing the queue reveals what's coming up.
-          <div className="flex items-center gap-4 px-4 py-6">
-            <Button
-              onClick={(e) => {
-                player.play({ context_uri: source.contextUri! })
-                if (!e.shiftKey) onPlayed?.()
-              }}
-            >
-              <Play className="fill-current" />
-              Play
-            </Button>
-            {error instanceof WebPlayerHidden && (
-              <Button
-                variant="secondary"
-                onClick={async () => (await window.api.webLogin()) && setAttempt((a) => a + 1)}
-              >
-                Sign in
-              </Button>
-            )}
-            <p className="text-sm text-muted-foreground">
-              {error instanceof WebPlayerHidden
-                ? "This playlist isn't public. Sign in to Spotify's web player to see its songs."
-                : error.message}
-            </p>
-          </div>
-        ) : error instanceof Error ? (
+        {error instanceof Error ? (
           <p className="px-4 py-6 text-sm text-destructive">{error.message}</p>
         ) : (
           done &&

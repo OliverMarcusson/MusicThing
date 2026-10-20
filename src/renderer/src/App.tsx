@@ -159,7 +159,11 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }): React.JSX.Element 
                       title="Liked Songs"
                       images={null}
                       placeholder={<Heart className="size-14 fill-current text-foreground" />}
-                      source={{ path: '/me/tracks?limit=50', pick: (i) => i.track }}
+                      source={{
+                        path: '/me/tracks?limit=50',
+                        pick: (i) => i.track,
+                        contextUri: 'spotify:collection:tracks'
+                      }}
                       showAlbum
                       player={player}
                       onPlayed={() => setView({ kind: 'now' })}

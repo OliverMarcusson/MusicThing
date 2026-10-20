@@ -5,7 +5,8 @@ import { autoUpdater } from 'electron-updater'
 import iconDark from '../../resources/icon-dark.png?asset'
 import iconLight from '../../resources/icon-light.png?asset'
 import { startPlayer, stopPlayer } from './librespot'
-import { getToken, login, playlistPage } from './webplayer'
+import { getToken, login } from './webplayer'
+import { webApi } from './webapi'
 import {
   move as connectMove,
   queue as connectQueue,
@@ -106,7 +107,9 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('auth:token', () => getToken())
-  ipcMain.handle('web:playlist', (_, id: string, offset: number) => playlistPage(id, offset))
+  ipcMain.handle('spotify:request', (_, method: string, path: string, body?: string) =>
+    webApi(method, path, body)
+  )
   // The player waits for the first sign-in when it has no cached credentials.
   ipcMain.handle('web:login', async () => {
     const ok = await login(mainWindow ?? undefined)

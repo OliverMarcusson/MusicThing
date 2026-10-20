@@ -216,17 +216,19 @@ function Cover({
   onSelect: () => void
 }): React.JSX.Element {
   // Slot jumps with the props; the parent shifts the drag in the same frame, so nothing moves.
-  const slot = useMotionValue(offset)
-  const mounted = useRef(false)
+  // A cover that turns up after the flow is on screen (the queue loads just after the track
+  // appears) starts one slot further out, where it's still hidden, and glides in instead of
+  // popping in. Covers there when the page opens just sit in place.
+  const [enters] = useState(() => late && offset !== 0)
+  const slot = useMotionValue(enters ? offset + Math.sign(offset) : offset)
+  // The offset last applied; a repeat run with the same offset (StrictMode runs mount effects
+  // twice) must leave the glide alone, since jump() would cancel it.
+  const applied = useRef<number | null>(null)
   useLayoutEffect(() => {
-    // A cover that turns up after the flow is on screen (the queue loads just after the track
-    // appears) glides in from one slot further out, where it's still hidden, instead of
-    // popping in. Covers there when the page opens just sit in place.
-    if (!mounted.current && late && offset) {
-      slot.jump(offset + Math.sign(offset))
-      animate(slot, offset, SPRING)
-    } else slot.jump(offset)
-    mounted.current = true
+    if (applied.current === offset) return
+    if (applied.current === null && enters) animate(slot, offset, SPRING)
+    else slot.jump(offset)
+    applied.current = offset
   }, [offset, slot]) // eslint-disable-line react-hooks/exhaustive-deps
   const at = useTransform(() => slot.get() + drag.get())
 

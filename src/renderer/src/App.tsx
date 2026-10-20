@@ -337,6 +337,7 @@ function NowView({
           </motion.div>
         ) : (
           // Nothing playing: the mark, and the way in. The button opens search, same as Ctrl K.
+          // The launch Intro copies this layout to land its mark here; keep the two in step.
           <motion.div
             key="empty"
             className="flex flex-col items-center gap-8"

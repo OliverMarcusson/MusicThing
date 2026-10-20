@@ -185,8 +185,10 @@ type Prefs = {
   names: Record<string, string>
   /** The unpinned playlists are folded away under their header. */
   collapsed: boolean
+  /** The hidden playlists' list is unfolded. */
+  hiddenOpen: boolean
 }
-const NO_PREFS: Prefs = { hidden: [], pinned: [], names: {}, collapsed: false }
+const NO_PREFS: Prefs = { hidden: [], pinned: [], names: {}, collapsed: false, hiddenOpen: false }
 
 /** Hidden, pinned and renamed playlists: MusicThing's own, kept on this machine, not on Spotify. */
 function usePlaylistPrefs(): [Prefs, React.Dispatch<React.SetStateAction<Prefs>>] {
@@ -214,21 +216,19 @@ function PlaylistList({
   }, [loaded, onReady])
 
   const [prefs, setPrefs] = usePlaylistPrefs()
-  const [showHidden, setShowHidden] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   useEffect(() => onHold(menuOpen || renaming !== null), [menuOpen, renaming, onHold])
 
   // Pins come first, in the order pinned, and are saved whole so they show before their page
-  // loads; the loaded copy wins once it's in. Hidden ones stay out unless asked for.
+  // loads; the loaded copy wins once it's in. Hidden ones get their own list at the bottom.
   const loadedById = new Map(items.filter(Boolean).map((p) => [p.id, p]))
   const pinned = new Set(prefs.pinned.map((p) => p.id))
   const hidden = new Set(prefs.hidden)
   const pinnedRows = prefs.pinned.map((p) => loadedById.get(p.id) ?? p)
   const folded = pinnedRows.length > 0 && prefs.collapsed
-  const rows = [...loadedById.values()].filter(
-    (p) => !pinned.has(p.id) && (showHidden || !hidden.has(p.id))
-  )
+  const rows = [...loadedById.values()].filter((p) => !pinned.has(p.id) && !hidden.has(p.id))
+  const hiddenRows = [...loadedById.values()].filter((p) => hidden.has(p.id))
 
   // The last change decides how rows come and go: see ROW_MOTION.
   const [action, setAction] = useState<Action>(null)
@@ -242,7 +242,8 @@ function PlaylistList({
     }))
   }
   const toggleHidden = (p: Playlist): void => {
-    setAction('fold')
+    // Travels to the other list if that one is open; otherwise folds away.
+    setAction((hidden.has(p.id) ? !folded : prefs.hiddenOpen) ? 'move' : 'fold')
     setPrefs((s) => ({
       ...s,
       hidden: hidden.has(p.id) ? s.hidden.filter((id) => id !== p.id) : [...s.hidden, p.id],
@@ -297,29 +298,42 @@ function PlaylistList({
       </Reorder.Group>
       {/* With pins, the rest fold away under one header; the choice is kept with the pins. */}
       {pinnedRows.length > 0 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-expanded={!folded}
-          className="mt-1 w-full justify-start gap-3 px-2.5 text-xs text-muted-foreground"
-          onClick={() => {
+        <FoldHeader
+          open={!folded}
+          label="Other playlists"
+          onToggle={() => {
             setAction('fold')
             setPrefs((s) => ({ ...s, collapsed: !s.collapsed }))
           }}
-        >
-          {/* Cover-wide, so the chevron centres in the collapsed rail like the covers above. */}
-          <span className="grid w-9 shrink-0 place-items-center">
-            <ChevronRight
-              className={cn('transition-transform duration-200', !folded && 'rotate-90')}
-            />
-          </span>
-          <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
-            Other playlists
-          </span>
-        </Button>
+        />
       )}
+      {foldRows(folded ? [] : rows, pinnedRows.length + 1)}
+      <ListEnd error={error} />
+      <div ref={sentinel} />
+      {/* Hidden playlists sit in their own folded list, stuck to the bottom of the panel. */}
+      {hiddenRows.length > 0 && (
+        <div className="sticky bottom-0 -mx-2 mt-1 border-t bg-background px-2 pb-1">
+          <FoldHeader
+            open={prefs.hiddenOpen}
+            label={`Hidden (${hiddenRows.length})`}
+            onToggle={() => {
+              setAction('fold')
+              setPrefs((s) => ({ ...s, hiddenOpen: !s.hiddenOpen }))
+            }}
+          />
+          <motion.div layoutScroll className="max-h-[40vh] overflow-x-hidden overflow-y-auto">
+            {foldRows(prefs.hiddenOpen ? hiddenRows : [], 0)}
+          </motion.div>
+        </div>
+      )}
+    </>
+  )
+
+  // Unpinned rows come and go as ROW_MOTION says for the last change.
+  function foldRows(list: Playlist[], start: number): React.JSX.Element {
+    return (
       <AnimatePresence initial={false} custom={action}>
-        {(folded ? [] : rows).map((p, i) => (
+        {list.map((p, i) => (
           <motion.div
             key={p.id}
             layoutId={p.id}
@@ -330,27 +344,12 @@ function PlaylistList({
             exit="out"
             className="overflow-hidden"
           >
-            {renderRow(p, pinnedRows.length + i + 1)}
+            {renderRow(p, start + i)}
           </motion.div>
         ))}
       </AnimatePresence>
-      {prefs.hidden.length > 0 && !folded && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 w-full justify-start px-2.5 text-xs text-muted-foreground group-data-[open=false]/side:invisible"
-          onClick={() => {
-            setAction('fold')
-            setShowHidden((s) => !s)
-          }}
-        >
-          {showHidden ? 'Leave out hidden' : `Show ${prefs.hidden.length} hidden`}
-        </Button>
-      )}
-      <ListEnd error={error} />
-      <div ref={sentinel} />
-    </>
-  )
+    )
+  }
 
   function renderRow(p: Playlist, index: number): React.JSX.Element {
     const name = prefs.names[p.id] ?? p.name
@@ -400,6 +399,34 @@ function PlaylistList({
       </PlaylistMenu>
     )
   }
+}
+
+/** A folding list's header: chevron and label, the chevron centred in the collapsed rail. */
+function FoldHeader({
+  open,
+  label,
+  onToggle
+}: {
+  open: boolean
+  label: string
+  onToggle: () => void
+}): React.JSX.Element {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-expanded={open}
+      className="mt-1 w-full justify-start gap-3 px-2.5 text-xs text-muted-foreground"
+      onClick={onToggle}
+    >
+      <span className="grid w-9 shrink-0 place-items-center">
+        <ChevronRight className={cn('transition-transform duration-200', open && 'rotate-90')} />
+      </span>
+      <span className="group-data-[open=false]/side:opacity-0 transition-opacity duration-150">
+        {label}
+      </span>
+    </Button>
+  )
 }
 
 type Action = 'move' | 'fold' | null
@@ -496,7 +523,7 @@ function Cover({ images }: { images: Image[] | null }): React.JSX.Element {
   )
 }
 
-/** Right-click menu for a playlist row. Hidden rows (shown on request) are dimmed. */
+/** Right-click menu for a playlist row. Hidden rows are dimmed. */
 function PlaylistMenu({
   pinned,
   hidden,

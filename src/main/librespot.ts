@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
-import { existsSync } from 'fs'
+import { createWriteStream, existsSync, type WriteStream } from 'fs'
 import { join } from 'path'
 import { getToken } from './webplayer'
 
@@ -27,6 +27,10 @@ const bin = join(
   'resources/librespot/bin',
   process.platform === 'win32' ? 'librespot.exe' : 'librespot'
 ).replace('app.asar', 'app.asar.unpacked')
+
+// librespot's output, to see why the player dropped off Connect or out of a Jam; started afresh
+// each run of the app.
+let logFile: WriteStream | null = null
 
 let child: ChildProcess | null = null
 let starting = false
@@ -72,7 +76,11 @@ export async function startPlayer(): Promise<void> {
       env: token ? { ...process.env, LIBRESPOT_ACCESS_TOKEN: token } : undefined
     }
   )
-  const log = (d: Buffer): boolean => process.stderr.write(`[librespot] ${d}`)
+  logFile ??= createWriteStream(join(app.getPath('userData'), 'librespot.log'))
+  const log = (d: Buffer): void => {
+    process.stderr.write(`[librespot] ${d}`)
+    logFile?.write(d)
+  }
   child.stdout?.on('data', log)
   child.stderr?.on('data', log)
   child.on('error', (err) => console.error('librespot failed to start:', err))
@@ -82,6 +90,7 @@ export async function startPlayer(): Promise<void> {
     // ponytail: fixed-delay restart; back off if a broken login makes it loop.
     if (!stopping) {
       console.error(`librespot exited (${code}); restarting`)
+      logFile?.write(`[${new Date().toISOString()}] librespot exited (${code}); restarting\n`)
       setTimeout(startPlayer, RESTART_MS)
     }
   })

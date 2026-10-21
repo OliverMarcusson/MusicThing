@@ -498,8 +498,14 @@ export const jam = (
 // the Jam here, for hosts and guests alike (joining again doesn't; Spotify ignores it). Left alone
 // when it's playing on another of the user's devices. Once per Jam until the player plays, decided
 // before the request goes out, so pushes arriving meanwhile can't queue it again.
+// Outside a Jam the same goes for a player that comes back while it was playing: librespot
+// reconnects with a fresh session after its connection drops, which Spotify lists as idle, so the
+// song carries on unseen ("nothing playing") and playback stops when it ends.
 let playerSeen = false
 let resumeOnStart = false
+// Whether this player was playing as of the last push that had a device playing; one with none
+// (the drop itself) leaves it be.
+let playingHere = false
 let healed: string | null = null
 let healing = false
 function heal(
@@ -513,7 +519,11 @@ function heal(
     (update?.update_reason === 'NEW_DEVICE_APPEARED' &&
       !!update.devices_that_changed?.includes(here))
   playerSeen = true
-  const resume = back && resumeOnStart
+  const wasPlaying = playingHere
+  const p = c.player_state
+  if (c.active_device_id)
+    playingHere = c.active_device_id === here && !!p.is_playing && !p.is_paused
+  const resume = back && (resumeOnStart || wasPlaying)
   if (back) resumeOnStart = false
   if (c.active_device_id === here) healed = null
   const idle = !!inJam && !c.active_device_id && healed !== inJam.session_id
@@ -523,7 +533,8 @@ function heal(
   op(async () => {
     const s = (inJam = await session('/v2/sessions/current'))
     if (!s) {
-      // Paused by pauseForRestart, so the position Spotify kept is exact.
+      // Paused by pauseForRestart, so the position Spotify kept is exact; after a dropped
+      // connection the transfer extrapolates it, picking the song up where it is.
       if (resume && (!c.active_device_id || c.active_device_id === here)) await transferTo(here)
       return
     }

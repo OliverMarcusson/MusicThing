@@ -295,6 +295,13 @@ async function route(
     }
   }
 
+  if (path === '/me/tracks' && method === 'PUT') {
+    await pathfinder('addToLibrary', {
+      libraryItemUris: body.ids.map((id: string) => `spotify:track:${id}`),
+      interactionId: null
+    })
+    return null
+  }
   if (playlistId && method === 'POST') {
     await pathfinder('addToPlaylist', {
       playlistUri: `spotify:playlist:${playlistId}`,

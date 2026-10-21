@@ -261,7 +261,10 @@ export function QueueAdd({ uri, player }: { uri: string; player: Player }): Reac
 const rowAction =
   'relative z-10 text-muted-foreground opacity-0 hover:bg-foreground/10 dark:hover:bg-foreground/10 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100'
 
-/** Row button that opens a filterable list of the playlists you can edit; picking one appends the track. */
+/**
+ * Row button that opens a filterable list of Liked Songs and the playlists you can edit; picking one
+ * adds the track.
+ */
 export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null)
@@ -285,12 +288,13 @@ export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
     }
   }, [open])
 
-  const add = async (p: Playlist): Promise<void> => {
+  // Liked Songs saves the track rather than appending it to a playlist.
+  const add = async (p: Playlist | null): Promise<void> => {
     try {
-      await api(`/playlists/${p.id}/items`, {
-        method: 'POST',
+      await api(p ? `/playlists/${p.id}/items` : '/me/tracks', {
+        method: p ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uris: [uri] })
+        body: JSON.stringify(p ? { uris: [uri] } : { ids: [uri.split(':').pop()] })
       })
       setOpen(false)
       setAdded(true)
@@ -337,6 +341,9 @@ export function PlaylistAdd({ uri }: { uri: string }): React.JSX.Element {
             ) : playlists ? (
               <>
                 <CommandEmpty>No playlists.</CommandEmpty>
+                <CommandItem value="liked" keywords={['Liked Songs']} onSelect={() => add(null)}>
+                  <span className="truncate">Liked Songs</span>
+                </CommandItem>
                 {playlists.map((p) => (
                   <CommandItem key={p.id} value={p.id} keywords={[p.name]} onSelect={() => add(p)}>
                     <span className="truncate">{p.name}</span>

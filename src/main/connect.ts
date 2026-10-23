@@ -179,6 +179,8 @@ async function send(
     })
     if (res) return res
   }
+  // No device playing and librespot's not registered (see librespot.log): nowhere to send it.
+  if (!to) throw new Error("MusicThing's player isn't connected; check librespot.log.")
   try {
     return await call(`/connect-state/v1/player/command/from/${DEVICE_ID}/to/${to}`, {
       method: 'POST',
